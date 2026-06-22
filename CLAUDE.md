@@ -23,6 +23,24 @@ A mobile-first expense-splitting and simple debt-tracking web app for a small pr
 - `npm run build` — Production build
 - `npm run lint` — Run ESLint
 
+## Database Schema
+
+7 tables: `profiles`, `groups`, `group_members`, `categories`, `expenses`, `expense_splits`, `settlements`. Full schema in `supabase/schema.sql`.
+
+- All monetary amounts are integers (Iranian Toman, no decimals)
+- `expenses.group_id` is nullable — null means a quick loan between two people
+- RLS enabled on every table. Policies use a `SECURITY DEFINER` function `is_group_member(group_id, user_id)` to check group membership without infinite recursion on `group_members`
+- A trigger on `auth.users` auto-creates a `profiles` row on sign-up
+- Supabase clients: `lib/supabase/client.ts` (browser), `lib/supabase/server.ts` (server)
+
+## Authentication
+
+- Auth is handled by Supabase Auth + Google OAuth
+- Callback route: `app/auth/callback/route.ts` exchanges the OAuth code for a session
+- `middleware.ts` protects all routes — unauthenticated users are redirected to `/login`
+- Session is cookie-based (Supabase SSR pattern via `lib/supabase/middleware.ts`)
+- User profile data lives in the `profiles` table (auto-created by trigger on sign-up); display metadata also available via `session.user.user_metadata`
+
 ## Design Direction
 
 Simple, modern, minimal. No heavy animations. Mobile-first. Full design system comes in a later stage.
