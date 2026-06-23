@@ -41,6 +41,24 @@ A mobile-first expense-splitting and simple debt-tracking web app for a small pr
 - Session is cookie-based (Supabase SSR pattern via `lib/supabase/middleware.ts`)
 - User profile data lives in the `profiles` table (auto-created by trigger on sign-up); display metadata also available via `session.user.user_metadata`
 
+## API Routes
+
+- `GET  /api/groups` — list groups the current user belongs to (with member count)
+- `POST /api/groups` — create a group (body: `{ name }`)
+- `GET  /api/groups/[id]` — group details + members with profiles
+- `POST /api/groups/[id]/members` — add a member by email (body: `{ email }`)
+- `GET  /api/groups/[id]/expenses` — list group expenses with splits, category, payer
+- `GET  /api/groups/[id]/balances` — calculated balances and simplified debts for a group
+- `POST /api/expenses` — create expense with splits atomically (body: `{ groupId, paidBy, categoryId, amountToman, description, expenseDate, splits }`)
+- `GET  /api/expenses/[id]` — single expense with splits, category, payer
+- `POST /api/settlements` — record a settlement (body: `{ groupId, fromUser, toUser, amountToman }`)
+- `GET  /api/categories` — list all categories
+
+## Business Logic
+
+- `lib/balance.ts` — pure functions for balance calculation (`calculateBalances`, `simplifyDebts`, `calculateGroupDebts`) and splitting (`splitEqually`, `splitByPercentage`). Zero side effects, tested with node:test.
+- `lib/expense-service.ts` — `createExpenseWithSplits()` handles atomic expense + splits insertion with manual rollback on failure.
+
 ## Design Direction
 
 Simple, modern, minimal. No heavy animations. Mobile-first. Full design system comes in a later stage.
