@@ -1,5 +1,6 @@
 "use client";
 
+import { Receipt } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 function GoogleIcon() {
@@ -40,21 +41,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6">
+    <div className="flex min-h-dvh flex-col items-center justify-center px-6 bg-bg">
       <div className="w-full max-w-sm text-center">
-        <h1 className="text-2xl font-medium tracking-tight text-zinc-900 dark:text-zinc-100">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg border-2 border-ink bg-primary shadow-[4px_4px_0px_#0D0D0D]">
+          <Receipt size={32} className="text-ink" />
+        </div>
+
+        <h1 className="font-display text-[32px] font-bold text-ink">
           SplitMate
         </h1>
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-          Shared expenses, simplified
+        <p className="mt-2 text-sm text-ink-muted">
+          Shared expenses, simplified.
         </p>
 
         <button
           onClick={handleSignIn}
-          className="mt-10 flex w-full items-center justify-center gap-3 rounded-lg border border-zinc-300 bg-white px-4 py-3 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          className="mt-10 flex w-full items-center justify-center gap-3 rounded-lg border-2 border-ink bg-surface px-4 py-3 text-sm font-semibold text-ink shadow-[4px_4px_0px_#0D0D0D] transition-all duration-150 hover:shadow-[2px_2px_0px_#0D0D0D] hover:translate-x-[2px] hover:translate-y-[2px] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]"
         >
           <GoogleIcon />
-          Continue with Google
+          Sign in with Google
         </button>
       </div>
     </div>

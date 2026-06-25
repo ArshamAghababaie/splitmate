@@ -59,9 +59,29 @@ A mobile-first expense-splitting and simple debt-tracking web app for a small pr
 - `lib/balance.ts` — pure functions for balance calculation (`calculateBalances`, `simplifyDebts`, `calculateGroupDebts`) and splitting (`splitEqually`, `splitByPercentage`). Zero side effects, tested with node:test.
 - `lib/expense-service.ts` — `createExpenseWithSplits()` handles atomic expense + splits insertion with manual rollback on failure.
 
-## Design Direction
+## Design System
 
-Simple, modern, minimal. No heavy animations. Mobile-first. Full design system comes in a later stage.
+Neubrutalist visual language: hard ink borders (`2px solid #0D0D0D`), offset box-shadows (`4px 4px 0px #0D0D0D`), press-effect on hover/active, rounded-lg corners.
+
+- **Fonts:** Space Grotesk (display/headings/amounts), Inter (body) — loaded via Google Fonts in `globals.css`
+- **Colors:** warm off-white bg (`#FFFDF7`), yellow primary (`#FFD600`), green positive (`#00C566`), red negative (`#FF3B3B`), ink (`#0D0D0D`) — defined as CSS vars via `@theme inline` in `globals.css`
+- **Icons:** `lucide-react` — category icons mapped in `lib/category-icons.ts`
+- **Avatars:** deterministic color from user ID hash — `lib/avatar-colors.ts`
+- **Amounts:** Latin numerals with comma formatting, currency label "تومان" — `lib/format.ts`
+
+### Component Library (`components/`)
+
+- `ui/` — Button (primary/secondary/ghost/danger), Card, Input, Drawer (bottom sheet), Avatar, Badge, AmountDisplay, EmptyState, SkeletonCard
+- `layout/` — BottomNav (4 tabs), PageHeader (sticky top bar), FAB (floating action button)
+- `shared/` — CategoryPicker, SplitTypeSelector
+
+### App Routes (under `(app)/` route group with BottomNav)
+
+- `/dashboard` — overview: net balance, group list, recent debts, FAB → add expense
+- `/groups` — group list with create drawer
+- `/groups/[id]` — group detail with tabs (expenses, balances, members)
+- `/balances` — all debts across groups with settle-up flow
+- `/profile` — user info + sign out
 
 ## Environment Variables
 

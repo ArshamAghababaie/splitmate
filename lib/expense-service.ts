@@ -15,38 +15,23 @@ export async function createExpenseWithSplits(
   supabase: SupabaseClient,
   data: CreateExpenseInput,
 ) {
-  const { data: expense, error: expenseError } = await supabase
-    .from("expenses")
-    .insert({
-      group_id: data.groupId,
-      paid_by: data.paidBy,
-      category_id: data.categoryId,
-      amount_toman: data.amountToman,
-      description: data.description,
-      expense_date: data.expenseDate,
-      created_by: data.createdBy,
-    })
-    .select()
-    .single();
+  const { data: expenseId, error } = await supabase.rpc(
+    "create_expense_with_splits",
+    {
+      p_group_id: data.groupId,
+      p_paid_by: data.paidBy,
+      p_category_id: data.categoryId,
+      p_amount_toman: data.amountToman,
+      p_description: data.description,
+      p_expense_date: data.expenseDate,
+      p_created_by: data.createdBy,
+      p_splits: data.splits,
+    },
+  );
 
-  if (expenseError || !expense) {
-    throw new Error(expenseError?.message ?? "Failed to create expense");
+  if (error) {
+    throw new Error(error.message);
   }
 
-  const splitRows = data.splits.map((s) => ({
-    expense_id: expense.id,
-    user_id: s.userId,
-    amount_owed: s.amountOwed,
-  }));
-
-  const { error: splitsError } = await supabase
-    .from("expense_splits")
-    .insert(splitRows);
-
-  if (splitsError) {
-    await supabase.from("expenses").delete().eq("id", expense.id);
-    throw new Error(splitsError.message);
-  }
-
-  return expense;
+  return { id: expenseId };
 }

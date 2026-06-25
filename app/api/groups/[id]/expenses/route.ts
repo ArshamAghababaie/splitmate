@@ -5,14 +5,19 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id: groupId } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const { id: groupId } = await params;
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user)
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { data: expenses, error } = await supabase
-    .from("expenses")
-    .select(`
+    const { data: expenses, error } = await supabase
+      .from("expenses")
+      .select(
+        `
       id,
       group_id,
       paid_by,
@@ -35,11 +40,18 @@ export async function GET(
         user_id,
         amount_owed
       )
-    `)
-    .eq("group_id", groupId)
-    .order("expense_date", { ascending: false });
+    `,
+      )
+      .eq("group_id", groupId)
+      .order("expense_date", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(expenses);
+    return NextResponse.json(expenses);
+  } catch (err) {
+    const message =
+      err instanceof Error ? err.message : "Failed to fetch expenses";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
