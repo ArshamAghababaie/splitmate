@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { hapticSuccess, hapticError } from "@/lib/haptics";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -14,7 +15,12 @@ import { formatAmount } from "@/lib/format";
 
 type Category = { id: string; name: string; icon: string };
 type Group = { id: string; name: string };
-type Member = { id: string; full_name: string; email: string; avatar_color?: string | null };
+type Member = {
+  id: string;
+  full_name: string;
+  email: string;
+  avatar_color?: string | null;
+};
 
 type EditData = {
   id: string;
@@ -54,9 +60,13 @@ export function AddExpenseDrawer({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [paidBy, setPaidBy] = useState(userId);
-  const [splitType, setSplitType] = useState<"equal" | "custom" | "percentage">("equal");
+  const [splitType, setSplitType] = useState<"equal" | "custom" | "percentage">(
+    "equal",
+  );
   const [customSplits, setCustomSplits] = useState<Record<string, string>>({});
-  const [percentageSplits, setPercentageSplits] = useState<Record<string, string>>({});
+  const [percentageSplits, setPercentageSplits] = useState<
+    Record<string, string>
+  >({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -160,7 +170,8 @@ export function AddExpenseDrawer({
   const splitsTotal = computedSplits().reduce((s, x) => s + x.amountOwed, 0);
   const splitValid = splitsTotal === amountNum && amountNum > 0;
 
-  const canProceedStep1 = amountNum > 0 && description.trim().length > 0 && categoryId;
+  const canProceedStep1 =
+    amountNum > 0 && description.trim().length > 0 && categoryId;
   const canProceedStep2 = splitValid;
 
   const getMemberName = (id: string) =>
@@ -175,9 +186,7 @@ export function AddExpenseDrawer({
     setSubmitting(true);
     setError("");
     try {
-      const url = isEditing
-        ? `/api/expenses/${editData.id}`
-        : "/api/expenses";
+      const url = isEditing ? `/api/expenses/${editData.id}` : "/api/expenses";
       const method = isEditing ? "PATCH" : "POST";
 
       const res = await fetch(url, {
@@ -210,10 +219,12 @@ export function AddExpenseDrawer({
         throw new Error(message);
       }
 
+      hapticSuccess();
       onClose();
       if (onSuccess) onSuccess();
       else window.location.reload();
     } catch (e) {
+      hapticError();
       setError(
         e instanceof Error
           ? e.message
@@ -225,9 +236,14 @@ export function AddExpenseDrawer({
     }
   };
 
-  const stepTitle = step === 1
-    ? (isEditing ? "Edit Expense" : "Add Expense")
-    : step === 2 ? "Split" : "Confirm";
+  const stepTitle =
+    step === 1
+      ? isEditing
+        ? "Edit Expense"
+        : "Add Expense"
+      : step === 2
+        ? "Split"
+        : "Confirm";
 
   return (
     <Drawer open={open} onClose={onClose} title={stepTitle}>
@@ -238,7 +254,11 @@ export function AddExpenseDrawer({
             <div
               key={s}
               className={`h-2 rounded-full transition-all duration-300 ${
-                s === step ? "w-8 bg-primary" : s < step ? "w-2 bg-positive" : "w-2 bg-surface-alt"
+                s === step
+                  ? "w-8 bg-primary"
+                  : s < step
+                    ? "w-2 bg-positive"
+                    : "w-2 bg-surface-alt"
               } border border-ink/20`}
             />
           ))}
@@ -249,6 +269,7 @@ export function AddExpenseDrawer({
           <>
             <div className="text-center">
               <input
+                style={{ fontSize: 40 }}
                 type="text"
                 inputMode="numeric"
                 placeholder="0"
@@ -257,7 +278,7 @@ export function AddExpenseDrawer({
                   const val = e.target.value.replace(/\D/g, "");
                   setAmount(val);
                 }}
-                className="w-full bg-transparent text-center font-display text-5xl font-bold text-ink placeholder:text-ink-muted/30 focus:outline-none"
+                className="w-full bg-transparent text-center font-display font-bold text-ink placeholder:text-ink-muted/30 focus:outline-none"
               />
               <p className="text-sm text-ink-muted mt-1">Toman</p>
             </div>
@@ -285,29 +306,30 @@ export function AddExpenseDrawer({
                 Who paid?
               </label>
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {(groupId && members.length > 0 ? members : [{ id: userId, full_name: "You", avatar_color: null }]).map(
-                  (m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setPaidBy(m.id)}
-                      className={`flex flex-col items-center gap-1 rounded-lg p-2 min-w-15 transition-all duration-150 ${
-                        paidBy === m.id
-                          ? "border-2 border-ink bg-primary shadow-[2px_2px_0px_#0D0D0D]"
-                          : "border-2 border-transparent hover:border-ink/30"
-                      }`}
-                    >
-                      <Avatar
-                        userId={m.id}
-                        name={m.full_name}
-                        size="sm"
-                        color={m.avatar_color}
-                      />
-                      <span className="text-[10px] font-medium text-ink truncate max-w-14">
-                        {m.id === userId ? "You" : m.full_name.split(" ")[0]}
-                      </span>
-                    </button>
-                  ),
-                )}
+                {(groupId && members.length > 0
+                  ? members
+                  : [{ id: userId, full_name: "You", avatar_color: null }]
+                ).map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setPaidBy(m.id)}
+                    className={`flex flex-col items-center gap-1 rounded-lg p-2 min-w-15 transition-all duration-150 ${
+                      paidBy === m.id
+                        ? "border-2 border-ink bg-primary shadow-[2px_2px_0px_#0D0D0D]"
+                        : "border-2 border-transparent hover:border-ink/30"
+                    }`}
+                  >
+                    <Avatar
+                      userId={m.id}
+                      name={m.full_name}
+                      size="sm"
+                      color={m.avatar_color}
+                    />
+                    <span className="text-[10px] font-medium text-ink truncate max-w-14">
+                      {m.id === userId ? "You" : m.full_name.split(" ")[0]}
+                    </span>
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -351,80 +373,87 @@ export function AddExpenseDrawer({
             <Card className="text-center py-2">
               <p className="text-xs text-ink-muted">Splitting</p>
               <p className="font-display text-xl font-bold">
-                {formatAmount(amountNum)} <span className="text-sm font-normal text-ink-muted">Toman</span>
+                {formatAmount(amountNum)}{" "}
+                <span className="text-sm font-normal text-ink-muted">
+                  Toman
+                </span>
               </p>
             </Card>
 
             {groupId && members.length > 1 && (
-              <SplitTypeSelector value={splitType} onChange={(t) => {
-                setSplitType(t);
-                setCustomSplits({});
-                setPercentageSplits({});
-              }} />
+              <SplitTypeSelector
+                value={splitType}
+                onChange={(t) => {
+                  setSplitType(t);
+                  setCustomSplits({});
+                  setPercentageSplits({});
+                }}
+              />
             )}
 
             <div className="space-y-2">
-              {(groupId ? members : [{ id: userId, full_name: "You", avatar_color: null }]).map(
-                (m) => {
-                  const splits = computedSplits();
-                  const mySplit = splits.find((s) => s.userId === m.id);
-                  return (
-                    <div
-                      key={m.id}
-                      className="flex items-center gap-3 rounded-lg border-2 border-ink/20 bg-surface p-3"
-                    >
-                      <Avatar
-                        userId={m.id}
-                        name={m.full_name}
-                        size="sm"
-                        color={m.avatar_color}
-                      />
-                      <span className="flex-1 text-sm font-medium truncate">
-                        {m.id === userId ? "You" : m.full_name}
+              {(groupId
+                ? members
+                : [{ id: userId, full_name: "You", avatar_color: null }]
+              ).map((m) => {
+                const splits = computedSplits();
+                const mySplit = splits.find((s) => s.userId === m.id);
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg border-2 border-ink/20 bg-surface p-3"
+                  >
+                    <Avatar
+                      userId={m.id}
+                      name={m.full_name}
+                      size="sm"
+                      color={m.avatar_color}
+                    />
+                    <span className="flex-1 text-sm font-medium truncate">
+                      {m.id === userId ? "You" : m.full_name}
+                    </span>
+
+                    {splitType === "equal" && (
+                      <span className="font-display text-sm font-bold">
+                        {formatAmount(mySplit?.amountOwed ?? 0)}
                       </span>
+                    )}
 
-                      {splitType === "equal" && (
-                        <span className="font-display text-sm font-bold">
-                          {formatAmount(mySplit?.amountOwed ?? 0)}
-                        </span>
-                      )}
+                    {splitType === "custom" && (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={customSplits[m.id] ?? ""}
+                        onChange={(e) => {
+                          const val = e.target.value.replace(/\D/g, "");
+                          setCustomSplits((prev) => ({ ...prev, [m.id]: val }));
+                        }}
+                        className="w-24 rounded-lg border-2 border-ink bg-surface-alt px-2 py-1 text-right font-display text-sm font-bold focus:outline-none focus:shadow-[2px_2px_0px_#FFD600]"
+                      />
+                    )}
 
-                      {splitType === "custom" && (
+                    {splitType === "percentage" && (
+                      <div className="flex items-center gap-1">
                         <input
                           type="text"
-                          inputMode="numeric"
+                          inputMode="decimal"
                           placeholder="0"
-                          value={customSplits[m.id] ?? ""}
+                          value={percentageSplits[m.id] ?? ""}
                           onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, "");
-                            setCustomSplits((prev) => ({ ...prev, [m.id]: val }));
+                            setPercentageSplits((prev) => ({
+                              ...prev,
+                              [m.id]: e.target.value,
+                            }));
                           }}
-                          className="w-24 rounded-lg border-2 border-ink bg-surface-alt px-2 py-1 text-right font-display text-sm font-bold focus:outline-none focus:shadow-[2px_2px_0px_#FFD600]"
+                          className="w-16 rounded-lg border-2 border-ink bg-surface-alt px-2 py-1 text-right font-display text-sm font-bold focus:outline-none focus:shadow-[2px_2px_0px_#FFD600]"
                         />
-                      )}
-
-                      {splitType === "percentage" && (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="0"
-                            value={percentageSplits[m.id] ?? ""}
-                            onChange={(e) => {
-                              setPercentageSplits((prev) => ({
-                                ...prev,
-                                [m.id]: e.target.value,
-                              }));
-                            }}
-                            className="w-16 rounded-lg border-2 border-ink bg-surface-alt px-2 py-1 text-right font-display text-sm font-bold focus:outline-none focus:shadow-[2px_2px_0px_#FFD600]"
-                          />
-                          <span className="text-xs text-ink-muted">%</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                },
-              )}
+                        <span className="text-xs text-ink-muted">%</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {splitType !== "equal" && (
@@ -433,7 +462,8 @@ export function AddExpenseDrawer({
                   splitValid ? "text-positive" : "text-negative"
                 }`}
               >
-                Total: {formatAmount(splitsTotal)} / {formatAmount(amountNum)} Toman
+                Total: {formatAmount(splitsTotal)} / {formatAmount(amountNum)}{" "}
+                Toman
                 {splitValid ? " ✓" : " — must equal total"}
               </p>
             )}
@@ -485,12 +515,16 @@ export function AddExpenseDrawer({
                 <div className="border-t border-ink/10" />
                 <div className="flex justify-between text-sm">
                   <span className="text-ink-muted">Category</span>
-                  <span className="font-medium">{selectedCategory?.name ?? "—"}</span>
+                  <span className="font-medium">
+                    {selectedCategory?.name ?? "—"}
+                  </span>
                 </div>
                 <div className="border-t border-ink/10" />
                 <div className="flex justify-between text-sm">
                   <span className="text-ink-muted">Paid by</span>
-                  <span className="font-medium">{paidBy === userId ? "You" : getMemberName(paidBy)}</span>
+                  <span className="font-medium">
+                    {paidBy === userId ? "You" : getMemberName(paidBy)}
+                  </span>
                 </div>
                 {groupId && (
                   <>
@@ -507,11 +541,18 @@ export function AddExpenseDrawer({
             </Card>
 
             <div>
-              <p className="text-xs font-semibold text-ink-muted mb-2">Split preview</p>
+              <p className="text-xs font-semibold text-ink-muted mb-2">
+                Split preview
+              </p>
               <div className="space-y-1.5">
                 {computedSplits().map((s) => (
-                  <div key={s.userId} className="flex items-center justify-between text-sm">
-                    <span>{s.userId === userId ? "You" : getMemberName(s.userId)}</span>
+                  <div
+                    key={s.userId}
+                    className="flex items-center justify-between text-sm"
+                  >
+                    <span>
+                      {s.userId === userId ? "You" : getMemberName(s.userId)}
+                    </span>
                     <span className="font-display font-bold">
                       {formatAmount(s.amountOwed)} Toman
                     </span>
@@ -545,8 +586,10 @@ export function AddExpenseDrawer({
                     <Loader2 size={16} className="animate-spin" />
                     Saving...
                   </>
+                ) : isEditing ? (
+                  "Save Changes"
                 ) : (
-                  isEditing ? "Save Changes" : "Add Expense"
+                  "Add Expense"
                 )}
               </Button>
             </div>

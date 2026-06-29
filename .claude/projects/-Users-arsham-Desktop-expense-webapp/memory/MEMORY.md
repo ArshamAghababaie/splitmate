@@ -1,0 +1,1 @@
+- [Tailwind input style override](feedback_tailwind-input-style.md) — Use inline style when Tailwind text-size classes don't apply to inputs

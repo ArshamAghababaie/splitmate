@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Receipt, Users, ArrowRight, Loader2 } from "lucide-react";
+import { Receipt, Users, ArrowRight } from "lucide-react";
+import { PullToRefresh } from "@/components/ui/PullToRefresh";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
@@ -53,11 +54,9 @@ export function DashboardContent({
   const [totalOwe, setTotalOwe] = useState(0);
   const [loading, setLoading] = useState(true);
   const [expenseOpen, setExpenseOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const loadData = useCallback(async (showRefresh = false) => {
+  const loadData = useCallback(async () => {
     try {
-      if (showRefresh) setRefreshing(true);
 
       const [groupsData, recentData] = await Promise.all([
         fetchJSON<Group[]>("/api/groups"),
@@ -96,7 +95,6 @@ export function DashboardContent({
       // ignore
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, [userId]);
 
@@ -104,15 +102,9 @@ export function DashboardContent({
     loadData();
   }, [loadData]);
 
-  // Pull-to-refresh
-  const [touchStart, setTouchStart] = useState(0);
-  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.touches[0].clientY);
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const diff = e.changedTouches[0].clientY - touchStart;
-    if (diff > 80 && window.scrollY === 0 && !refreshing) {
-      loadData(true);
-    }
-  };
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const balanceLabel =
     netBalance > 0
@@ -122,11 +114,7 @@ export function DashboardContent({
         : "All settled up";
 
   return (
-    <div
-      className="flex flex-col"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <PullToRefresh onRefresh={handleRefresh}>
       <header className="border-b-2 border-ink bg-surface px-4 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg border-2 border-ink bg-primary">
@@ -138,12 +126,6 @@ export function DashboardContent({
           </div>
         </div>
       </header>
-
-      {refreshing && (
-        <div className="flex justify-center py-2">
-          <Loader2 size={20} className="animate-spin text-ink-muted" />
-        </div>
-      )}
 
       <div className="flex flex-col gap-4 p-4">
         <Card className="text-center">
@@ -270,8 +252,8 @@ export function DashboardContent({
         onClose={() => setExpenseOpen(false)}
         groups={groups}
         userId={userId}
-        onSuccess={() => loadData(true)}
+        onSuccess={() => loadData()}
       />
-    </div>
+    </PullToRefresh>
   );
 }

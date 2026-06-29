@@ -1,7 +1,9 @@
 "use client";
 
-import { Receipt } from "lucide-react";
+import { useRef, useState } from "react";
+import { Receipt, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { InstallBanner } from "@/components/ui/InstallBanner";
 
 function GoogleIcon() {
   return (
@@ -27,39 +29,65 @@ function GoogleIcon() {
 }
 
 export default function LoginPage() {
-  const handleSignIn = async () => {
-    const supabase = createClient();
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
+  const supabaseRef = useRef(createClient());
+  const [signingIn, setSigningIn] = useState(false);
 
-    await supabase.auth.signInWithOAuth({
+  const handleSignIn = async () => {
+    if (signingIn) return;
+    setSigningIn(true);
+
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? window.location.origin;
+
+    const { data, error } = await supabaseRef.current.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${siteUrl}/auth/callback`,
+        skipBrowserRedirect: true,
       },
     });
+
+    if (error || !data?.url) {
+      setSigningIn(false);
+      return;
+    }
+
+    window.location.href = data.url;
   };
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center px-6 bg-bg">
+    <div className="flex min-h-dvh flex-col h-full items-center justify-center px-6 bg-bg">
+      <InstallBanner />
       <div className="w-full max-w-sm text-center">
-        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-lg border-2 border-ink bg-primary shadow-[4px_4px_0px_#0D0D0D]">
-          <Receipt size={32} className="text-ink" />
+        <div className="mx-auto mb-8 rounded-xl border-2 border-ink bg-primary px-6 py-8 shadow-[4px_4px_0px_#0D0D0D]">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-lg border-2 border-ink bg-surface shadow-[2px_2px_0px_#0D0D0D]">
+            <Receipt size={32} className="text-ink" />
+          </div>
+          <h1 className="font-display text-[32px] font-bold text-ink">
+            SplitMate
+          </h1>
+          <p className="mt-1 text-sm text-ink/70">
+            Share simplified expenses with your friends, coleagues, and every
+            person you know.
+          </p>
         </div>
 
-        <h1 className="font-display text-[32px] font-bold text-ink">
-          SplitMate
-        </h1>
-        <p className="mt-2 text-sm text-ink-muted">
-          Shared expenses, simplified.
-        </p>
-
         <button
+          type="button"
           onClick={handleSignIn}
-          className="mt-10 flex w-full items-center justify-center gap-3 rounded-lg border-2 border-ink bg-surface px-4 py-3 text-sm font-semibold text-ink shadow-[4px_4px_0px_#0D0D0D] transition-all duration-150 hover:shadow-[2px_2px_0px_#0D0D0D] hover:translate-x-[2px] hover:translate-y-[2px] active:shadow-none active:translate-x-[4px] active:translate-y-[4px]"
+          disabled={signingIn}
+          className="flex w-full items-center justify-center gap-3 rounded-lg border-2 border-ink bg-surface px-4 py-3.5 text-sm font-semibold text-ink shadow-[4px_4px_0px_#0D0D0D] transition-all duration-150 hover:shadow-[2px_2px_0px_#0D0D0D] hover:translate-x-0.5 hover:translate-y-0.5 active:shadow-none active:translate-x-1 active:translate-y-1 disabled:opacity-60 disabled:pointer-events-none "
         >
-          <GoogleIcon />
-          Sign in with Google
+          {signingIn ? (
+            <>
+              <Loader2 size={18} className="animate-spin" />
+              Signing in...
+            </>
+          ) : (
+            <>
+              <GoogleIcon />
+              Sign in with Google
+            </>
+          )}
         </button>
       </div>
     </div>

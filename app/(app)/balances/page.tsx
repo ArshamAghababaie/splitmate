@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { Drawer } from "@/components/ui/Drawer";
+import { PullToRefresh } from "@/components/ui/PullToRefresh";
 import { createClient } from "@/lib/supabase/client";
+import { hapticSuccess } from "@/lib/haptics";
 import { fetchJSON } from "@/lib/api";
 
 type DebtItem = {
@@ -40,11 +42,9 @@ export default function BalancesPage() {
   const [settleDebt, setSettleDebt] = useState<DebtItem | null>(null);
   const [settling, setSettling] = useState(false);
   const [settledIds, setSettledIds] = useState<Set<string>>(new Set());
-  const [refreshing, setRefreshing] = useState(false);
 
-  const loadData = useCallback(async (showRefresh = false) => {
+  const loadData = useCallback(async () => {
     try {
-      if (showRefresh) setRefreshing(true);
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -102,7 +102,6 @@ export default function BalancesPage() {
       );
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -125,25 +124,20 @@ export default function BalancesPage() {
         }),
       });
       if (res.ok) {
+        hapticSuccess();
         const key = `${settleDebt.fromUser}-${settleDebt.toUser}-${settleDebt.groupId}`;
         setSettledIds((prev) => new Set(prev).add(key));
         setSettleDebt(null);
-        setTimeout(() => loadData(true), 1500);
+        setTimeout(() => loadData(), 1500);
       }
     } finally {
       setSettling(false);
     }
   };
 
-  // Pull-to-refresh
-  const [touchStart, setTouchStart] = useState(0);
-  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.touches[0].clientY);
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    const diff = e.changedTouches[0].clientY - touchStart;
-    if (diff > 80 && window.scrollY === 0 && !refreshing) {
-      loadData(true);
-    }
-  };
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   const balanceLabel =
     netBalance > 0
@@ -153,18 +147,8 @@ export default function BalancesPage() {
         : "All settled up";
 
   return (
-    <div
-      className="flex flex-col"
-      onTouchStart={handleTouchStart}
-      onTouchEnd={handleTouchEnd}
-    >
+    <PullToRefresh onRefresh={handleRefresh}>
       <PageHeader title="Balances" />
-
-      {refreshing && (
-        <div className="flex justify-center py-2">
-          <Loader2 size={20} className="animate-spin text-ink-muted" />
-        </div>
-      )}
 
       <div className="flex flex-col gap-4 p-4">
         {loading ? (
@@ -272,7 +256,7 @@ export default function BalancesPage() {
             <Card className="text-center">
               <p className="text-sm text-ink-muted">
                 {settleDebt.fromUser === userId ? "You" : settleDebt.fromUserProfile?.full_name ?? "?"}{" "}
-                pays{" "}
+                {settleDebt.fromUser === userId ? "pay" : "pays"}{" "}
                 {settleDebt.toUser === userId ? "you" : settleDebt.toUserProfile?.full_name ?? "?"}
               </p>
               <AmountDisplay
@@ -306,6 +290,6 @@ export default function BalancesPage() {
           </div>
         )}
       </Drawer>
-    </div>
+    </PullToRefresh>
   );
 }

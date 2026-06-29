@@ -2,22 +2,47 @@
 @import "tailwindcss";
 
 @theme inline {
-  --color-bg: #FFFDF7;
-  --color-surface: #FFFFFF;
-  --color-ink: #0D0D0D;
-  --color-ink-muted: #6B7280;
-  --color-primary: #FFD600;
-  --color-primary-hover: #F5C800;
-  --color-positive: #00C566;
-  --color-negative: #FF3B3B;
-  --color-neutral: #9CA3AF;
-  --color-surface-alt: #F3F0E8;
+  --color-bg: #fffdf7;
+  --color-surface: #ffffff;
+  --color-ink: #0d0d0d;
+  --color-ink-muted: #6b7280;
+  --color-primary: #ffd600;
+  --color-primary-hover: #f5c800;
+  --color-positive: #00c566;
+  --color-negative: #ff3b3b;
+  --color-neutral: #9ca3af;
+  --color-surface-alt: #f3f0e8;
   --font-display: "Space Grotesk", sans-serif;
   --font-body: "Inter", sans-serif;
+}
+
+@layer base {
+  button:not([disabled]),
+  [role="button"]:not([disabled]) {
+    cursor: pointer;
+  }
 }
 
 body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-body);
+}
+
+html,
+body {
+  overscroll-behavior: none;
+}
+
+:root {
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+  --safe-area-left: env(safe-area-inset-left);
+  --safe-area-right: env(safe-area-inset-right);
+}
+
+input,
+select,
+textarea {
+  font-size: 16px;
 }

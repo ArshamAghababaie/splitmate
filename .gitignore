@@ -37,6 +37,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# PWA auto-generated (if using next-pwa in future)
+public/workbox-*.js
+public/workbox-*.js.map
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

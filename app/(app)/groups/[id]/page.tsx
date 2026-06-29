@@ -25,7 +25,9 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { AddExpenseDrawer } from "../../dashboard/add-expense-drawer";
 import { UserSearchInput } from "@/components/shared/UserSearchInput";
+import { PullToRefresh } from "@/components/ui/PullToRefresh";
 import { getCategoryIcon } from "@/lib/category-icons";
+import { hapticSuccess, hapticError } from "@/lib/haptics";
 import { formatAmount, formatDate, relativeDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { fetchJSON } from "@/lib/api";
@@ -93,7 +95,6 @@ export default function GroupDetailPage() {
   const [settling, setSettling] = useState(false);
   const [settledKeys, setSettledKeys] = useState<Set<string>>(new Set());
   const [userId, setUserId] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
   // Action menu state
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -124,9 +125,8 @@ export default function GroupDetailPage() {
   const isCreator = group?.created_by === userId;
 
   const loadData = useCallback(
-    async (showRefresh = false) => {
+    async () => {
       try {
-        if (showRefresh) setRefreshing(true);
         const supabase = createClient();
         const {
           data: { user },
@@ -144,7 +144,6 @@ export default function GroupDetailPage() {
         if (balData?.debts) setDebts(balData.debts);
       } finally {
         setLoading(false);
-        setRefreshing(false);
       }
     },
     [id],
@@ -175,7 +174,7 @@ export default function GroupDetailPage() {
       setSelectedMembers([]);
       setAddMemberOpen(false);
       toast.success("Member added successfully");
-      loadData(true);
+      loadData();
     } catch {
       toast.error("Failed to add member");
     } finally {
@@ -199,12 +198,14 @@ export default function GroupDetailPage() {
         }),
       });
       if (res.ok) {
+        hapticSuccess();
         const key = `${settleDebt.fromUser}-${settleDebt.toUser}`;
         setSettledKeys((prev) => new Set(prev).add(key));
         setSettleDebt(null);
         toast.success("Settlement recorded");
-        setTimeout(() => loadData(true), 1500);
+        setTimeout(() => loadData(), 1500);
       } else {
+        hapticError();
         toast.error("Failed to record settlement");
       }
     } finally {
@@ -283,16 +284,9 @@ export default function GroupDetailPage() {
     }
   };
 
-  // Pull-to-refresh
-  const [touchStartPTR, setTouchStartPTR] = useState(0);
-  const handleTouchStartPTR = (e: React.TouchEvent) =>
-    setTouchStartPTR(e.touches[0].clientY);
-  const handleTouchEndPTR = (e: React.TouchEvent) => {
-    const diff = e.changedTouches[0].clientY - touchStartPTR;
-    if (diff > 80 && window.scrollY === 0 && !refreshing) {
-      loadData(true);
-    }
-  };
+  const handleRefresh = useCallback(async () => {
+    await loadData();
+  }, [loadData]);
 
   // Swipe handlers for expense rows
   const handleExpenseTouchStart = (e: React.TouchEvent, expId: string) => {
@@ -347,11 +341,7 @@ export default function GroupDetailPage() {
   ];
 
   return (
-    <div
-      className="flex flex-col"
-      onTouchStart={handleTouchStartPTR}
-      onTouchEnd={handleTouchEndPTR}
-    >
+    <PullToRefresh onRefresh={handleRefresh}>
       <PageHeader
         title={group?.name ?? "..."}
         showBack
@@ -364,12 +354,6 @@ export default function GroupDetailPage() {
           </button>
         }
       />
-
-      {refreshing && (
-        <div className="flex justify-center py-2">
-          <Loader2 size={20} className="animate-spin text-ink-muted" />
-        </div>
-      )}
 
       <div className="flex border-b-2 border-ink bg-surface">
         {TABS.map((t) => (
@@ -613,7 +597,9 @@ export default function GroupDetailPage() {
                         ? "You"
                         : (d.fromUserProfile?.full_name ?? "?")}
                     </span>
-                    <span className="text-ink-muted"> owes </span>
+                    <span className="text-ink-muted">
+                      {d.fromUser === userId ? " owe " : " owes "}
+                    </span>
                     <span className="font-semibold">
                       {d.toUser === userId
                         ? "you"
@@ -849,7 +835,7 @@ export default function GroupDetailPage() {
                 {settleDebt.fromUser === userId
                   ? "You"
                   : (settleDebt.fromUserProfile?.full_name ?? "?")}{" "}
-                pays{" "}
+                {settleDebt.fromUser === userId ? "pay" : "pays"}{" "}
                 {settleDebt.toUser === userId
                   ? "you"
                   : (settleDebt.toUserProfile?.full_name ?? "?")}
@@ -935,12 +921,12 @@ export default function GroupDetailPage() {
         userId={userId}
         prefilledGroupId={id}
         onSuccess={() => {
-          loadData(true);
+          loadData();
           if (editExpense) toast.success("Expense updated");
           else toast.success("Expense added");
         }}
         editData={editDataMemo}
       />
-    </div>
+    </PullToRefresh>
   );
 }

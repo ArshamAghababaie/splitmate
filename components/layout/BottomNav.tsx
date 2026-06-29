@@ -3,6 +3,7 @@
 import { Home, Users, Scale, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { hapticLight } from "@/lib/haptics";
 import type { LucideIcon } from "lucide-react";
 
 type NavItem = {
@@ -22,7 +23,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-30 border-t-2 border-ink bg-surface">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-30 border-t-2 border-ink bg-surface md:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
       <div className="mx-auto flex max-w-lg items-center justify-around py-2">
         {NAV_ITEMS.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
@@ -31,7 +35,8 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg transition-colors duration-150 ${
+              onClick={() => hapticLight()}
+              className={`flex min-h-[44px] min-w-[44px] flex-col items-center justify-center gap-0.5 rounded-lg px-3 py-1 transition-colors duration-150 ${
                 active
                   ? "bg-primary text-ink"
                   : "text-ink-muted hover:text-ink"

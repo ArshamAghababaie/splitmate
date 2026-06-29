@@ -83,6 +83,22 @@ Neubrutalist visual language: hard ink borders (`2px solid #0D0D0D`), offset box
 - `/balances` — all debts across groups with settle-up flow
 - `/profile` — user info + sign out
 
+## Mobile & PWA
+
+- The app is a PWA: manifest at `public/manifest.json`, icons at `public/icons/`
+- Service worker at `public/sw.js` (hand-written, network-first for navigation with offline fallback, cache-first for Google Fonts)
+- Service worker is registered only in production via `components/ServiceWorkerRegistrar.tsx`
+- Bottom navigation (`components/layout/BottomNav.tsx`) for mobile (`md:hidden`); desktop nav unchanged
+- Pull-to-refresh component at `components/ui/PullToRefresh.tsx`
+- Haptic feedback utilities in `lib/haptics.ts` — called on expense/settlement success/error and bottom nav tab changes
+- Install banner in `components/ui/InstallBanner.tsx` — handles both Android (`beforeinstallprompt`) and iOS (static instructions)
+- Safe area insets handled via CSS `env()` variables in `globals.css`
+- Offline fallback at `/offline`
+- Viewport includes `viewport-fit=cover` for iPhone safe areas
+- `touch-action: manipulation` on buttons/links to eliminate 300ms tap delay
+- Form inputs use `font-size: 16px` minimum to prevent iOS auto-zoom
+- Icon generation script: `node scripts/generate-icons.mjs` (uses `sharp`)
+
 ## Environment Variables
 
 Copy `.env.local.example` to `.env.local` and fill in values. Never commit `.env.local`.
