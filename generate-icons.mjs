@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(__dirname, "public/icons/SM_logo.png");
 const outDir = path.resolve(__dirname, "public/icons");
 const publicDir = path.resolve(__dirname, "public");
+const appDir = path.resolve(__dirname, "app");
 
 const BRAND_BG = { r: 253, g: 200, b: 47, alpha: 1 }; // #FDC82F
 const MASKABLE_PADDING = 0.1; // 10% per side keeps the logo inside the ~80% W3C safe zone, so launchers (Xiaomi/MIUI, etc.) don't crop it
@@ -86,6 +87,15 @@ async function generate() {
   await fs.promises.writeFile(path.join(outDir, "icon-maskable-512.png"), mask512);
   console.log("✓ icon-maskable-512.png");
 
+  // apple-touch-icon.png — plain resize, NO padding/golden background.
+  // This matches the original approach that rendered correctly on iOS.
+  // Must go in app/ (Next.js App Router file convention) — public/ is ignored if app/ has one.
+  await sharp(src)
+    .resize(180, 180)
+    .png()
+    .toFile(path.join(appDir, "apple-touch-icon.png"));
+  console.log("✓ apple-touch-icon.png  →  app/  (overwrites stale copy, this is what iOS actually reads)");
+
   // Favicons (rounded corners)
   const favicon16 = await generateRoundedFavicon(16);
   await fs.promises.writeFile(path.join(publicDir, "favicon-16x16.png"), favicon16);
@@ -95,20 +105,32 @@ async function generate() {
   await fs.promises.writeFile(path.join(publicDir, "favicon-32x32.png"), favicon32);
   console.log("✓ favicon-32x32.png  →  public/");
 
-  await fs.promises.writeFile(path.join(publicDir, "favicon.ico"), favicon32);
-  console.log("✓ favicon.ico        →  public/");
+  // favicon.ico MUST go in app/ — Next.js serves app/favicon.ico over public/favicon.ico
+  // when both exist, so this is the one the browser will actually load.
+  await fs.promises.writeFile(path.join(appDir, "favicon.ico"), favicon32);
+  console.log("✓ favicon.ico        →  app/  (overwrites stale copy, this is what the browser actually reads)");
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Done! Icons in public/icons/, favicons in public/
+✅ Done! Icons in public/icons/, apple-touch-icon.png + favicon.ico in app/, extra favicon sizes in public/
 
-🌐 Browser / iOS (any) → icon-192.png, icon-512.png   (no padding, unchanged)
-🤖 Android (maskable)  → icon-maskable-192.png, icon-maskable-512.png   (10% safe-zone padding)
-🔖 Favicons (rounded)  → favicon-16x16.png, favicon-32x32.png, favicon.ico   (20% corner radius)
+🌐 Browser / iOS (any) → public/icons/icon-192.png, icon-512.png   (no padding, unchanged)
+🤖 Android (maskable)  → public/icons/icon-maskable-192.png, icon-maskable-512.png   (10% safe-zone padding)
+🍎 Apple Touch Icon    → app/apple-touch-icon.png   (plain resize, no padding/background — this is what iOS actually reads)
+🔖 Favicon (rounded)   → app/favicon.ico   (this is what the browser actually reads)
+🔖 Favicon (rounded)   → public/favicon-16x16.png, favicon-32x32.png   (kept for manual reference if ever needed)
 
-No manual copy step needed this time — icon-192/512 are
-never overwritten by the maskable versions, so iOS keeps
-rendering exactly as it did before.
+IMPORTANT — stale duplicate files:
+Next.js App Router serves app/favicon.ico and app/apple-touch-icon.png
+INSTEAD OF the public/ versions when both exist. This script now writes
+to app/ directly, so those are always fresh. But the OLD copies still
+sitting in public/favicon.ico and public/apple-touch-icon.png are dead
+weight that could confuse you later — safe to delete manually:
+  rm public/favicon.ico public/apple-touch-icon.png
+
+Also noticed a stray public/faviconsss.ico from manual testing —
+safe to delete that too if you don't need it:
+  rm public/faviconsss.ico
 
 Make sure manifest.json still has two separate icon entries:
   { "src": "/icons/icon-192.png", "purpose": "any", ... }
