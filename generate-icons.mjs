@@ -8,7 +8,9 @@ const src = path.resolve(__dirname, "public/icons/SM_logo.png");
 const iconsDir = path.resolve(__dirname, "public/icons");
 const publicDir = path.resolve(__dirname, "public");
 
-async function generateWithPadding(size, paddingPercent, bgColor = null) {
+const BRAND_BG = { r: 253, g: 200, b: 47, alpha: 1 }; // #FFD600 - NOW IT IS: #FDC82F
+
+async function generateWithPadding(size, paddingPercent, bgColor = BRAND_BG) {
   const logoSize = Math.round(size * (1 - paddingPercent * 2));
   const padding = Math.round(size * paddingPercent);
 
@@ -25,7 +27,7 @@ async function generateWithPadding(size, paddingPercent, bgColor = null) {
       width: size,
       height: size,
       channels: 4,
-      background: bgColor ?? { r: 0, g: 0, b: 0, alpha: 0 },
+      background: bgColor,
     },
   })
     .composite([{ input: resizedLogo, top: padding, left: padding }])
@@ -49,9 +51,9 @@ async function generate() {
     .toFile(path.join(iconsDir, "icon-512.png"));
   console.log("✓ icon-512.png");
 
-  // 2. iOS icons (padding 18%)
-  console.log("\n── iOS (padding 18%) ──");
-  const IOS_PADDING = 0.18;
+  // 2. iOS icons (padding 8%)
+  console.log("\n── iOS (padding 8%) ──");
+  const IOS_PADDING = 0.08;
   const ios192 = await generateWithPadding(192, IOS_PADDING);
   await fs.promises.writeFile(path.join(iconsDir, "icon-ios-192.png"), ios192);
   console.log("✓ icon-ios-192.png");
@@ -65,9 +67,9 @@ async function generate() {
   );
   console.log("✓ apple-touch-icon.png  →  public/");
 
-  // 3. Maskable icons (padding 10%)
-  console.log("\n── Maskable / Android (padding 10%) ──");
-  const MASKABLE_PADDING = 0.1;
+  // 3. Maskable icons (padding 8%, still within W3C ~80% safe zone guidance)
+  console.log("\n── Maskable / Android (padding 8%) ──");
+  const MASKABLE_PADDING = 0.08;
   const mask192 = await generateWithPadding(192, MASKABLE_PADDING);
   await fs.promises.writeFile(
     path.join(iconsDir, "icon-maskable-192.png"),
@@ -109,7 +111,7 @@ async function generate() {
 🍎 Apple Touch → public/apple-touch-icon.png
 🔖 Favicons    → public/favicon.ico / favicon-16x16/32x32.png
 
-Now, copy these lines:
+Then, copy these lines:
   cp public/icons/icon-ios-192.png public/icons/icon-192.png
   cp public/icons/icon-ios-512.png public/icons/icon-512.png
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
