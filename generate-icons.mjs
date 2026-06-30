@@ -5,14 +5,16 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = path.resolve(__dirname, "public/icons/SM_logo.png");
-const iconsDir = path.resolve(__dirname, "public/icons");
+const outDir = path.resolve(__dirname, "public/icons");
 const publicDir = path.resolve(__dirname, "public");
 
-const BRAND_BG = { r: 253, g: 200, b: 47, alpha: 1 }; // #FFD600 - NOW IT IS: #FDC82F
+const BRAND_BG = { r: 253, g: 200, b: 47, alpha: 1 }; // #FDC82F
+const MASKABLE_PADDING = 0.1; // 10% per side keeps the logo inside the ~80% W3C safe zone, so launchers (Xiaomi/MIUI, etc.) don't crop it
+const FAVICON_RADIUS_PERCENT = 0.2; // 20% corner radius — noticeably rounded, not circular
 
-async function generateWithPadding(size, paddingPercent, bgColor = BRAND_BG) {
-  const logoSize = Math.round(size * (1 - paddingPercent * 2));
-  const padding = Math.round(size * paddingPercent);
+async function generateMaskable(size) {
+  const logoSize = Math.round(size * (1 - MASKABLE_PADDING * 2));
+  const offset = Math.round((size - logoSize) / 2);
 
   const resizedLogo = await sharp(src)
     .resize(logoSize, logoSize, {
@@ -27,93 +29,91 @@ async function generateWithPadding(size, paddingPercent, bgColor = BRAND_BG) {
       width: size,
       height: size,
       channels: 4,
-      background: bgColor,
+      background: BRAND_BG,
     },
   })
-    .composite([{ input: resizedLogo, top: padding, left: padding }])
+    .composite([{ input: resizedLogo, top: offset, left: offset }])
+    .png()
+    .toBuffer();
+}
+
+async function generateRoundedFavicon(size) {
+  const radius = Math.round(size * FAVICON_RADIUS_PERCENT);
+
+  const roundedMask = Buffer.from(
+    `<svg width="${size}" height="${size}">
+       <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="#fff"/>
+     </svg>`
+  );
+
+  const resizedLogo = await sharp(src)
+    .resize(size, size, { fit: "cover" })
+    .png()
+    .toBuffer();
+
+  return sharp(resizedLogo)
+    .composite([{ input: roundedMask, blend: "dest-in" }])
     .png()
     .toBuffer();
 }
 
 async function generate() {
-  console.log("Generating all PWA icons and favicons...\n");
+  console.log("Generating PWA icons from SM_logo.png...\n");
 
-  // 1. Standard any icons
-  console.log("── Standard (any) ──");
+  // icon-192.png (any) - plain resize, no padding.
+  // This is the version that already renders correctly on iOS, so it's left untouched.
   await sharp(src)
     .resize(192, 192)
     .png()
-    .toFile(path.join(iconsDir, "icon-192.png"));
+    .toFile(path.join(outDir, "icon-192.png"));
   console.log("✓ icon-192.png");
+
+  // icon-512.png (any)
   await sharp(src)
     .resize(512, 512)
     .png()
-    .toFile(path.join(iconsDir, "icon-512.png"));
+    .toFile(path.join(outDir, "icon-512.png"));
   console.log("✓ icon-512.png");
 
-  // 2. iOS icons (padding 8%)
-  console.log("\n── iOS (padding 8%) ──");
-  const IOS_PADDING = 0.08;
-  const ios192 = await generateWithPadding(192, IOS_PADDING);
-  await fs.promises.writeFile(path.join(iconsDir, "icon-ios-192.png"), ios192);
-  console.log("✓ icon-ios-192.png");
-  const ios512 = await generateWithPadding(512, IOS_PADDING);
-  await fs.promises.writeFile(path.join(iconsDir, "icon-ios-512.png"), ios512);
-  console.log("✓ icon-ios-512.png");
-  const appleTouch = await generateWithPadding(180, IOS_PADDING);
-  await fs.promises.writeFile(
-    path.join(publicDir, "apple-touch-icon.png"),
-    appleTouch,
-  );
-  console.log("✓ apple-touch-icon.png  →  public/");
-
-  // 3. Maskable icons (padding 8%, still within W3C ~80% safe zone guidance)
-  console.log("\n── Maskable / Android (padding 8%) ──");
-  const MASKABLE_PADDING = 0.08;
-  const mask192 = await generateWithPadding(192, MASKABLE_PADDING);
-  await fs.promises.writeFile(
-    path.join(iconsDir, "icon-maskable-192.png"),
-    mask192,
-  );
+  // icon-maskable-192.png - padded into a safe zone so Android launchers
+  // (including Xiaomi/MIUI, which mask aggressively) don't crop the logo
+  const mask192 = await generateMaskable(192);
+  await fs.promises.writeFile(path.join(outDir, "icon-maskable-192.png"), mask192);
   console.log("✓ icon-maskable-192.png");
-  const mask512 = await generateWithPadding(512, MASKABLE_PADDING);
-  await fs.promises.writeFile(
-    path.join(iconsDir, "icon-maskable-512.png"),
-    mask512,
-  );
+
+  // icon-maskable-512.png
+  const mask512 = await generateMaskable(512);
+  await fs.promises.writeFile(path.join(outDir, "icon-maskable-512.png"), mask512);
   console.log("✓ icon-maskable-512.png");
 
-  // 4. Favicons
-  console.log("\n── Favicons ──");
-  await sharp(src)
-    .resize(16, 16)
-    .png()
-    .toFile(path.join(publicDir, "favicon-16x16.png"));
+  // Favicons (rounded corners)
+  const favicon16 = await generateRoundedFavicon(16);
+  await fs.promises.writeFile(path.join(publicDir, "favicon-16x16.png"), favicon16);
   console.log("✓ favicon-16x16.png  →  public/");
-  await sharp(src)
-    .resize(32, 32)
-    .png()
-    .toFile(path.join(publicDir, "favicon-32x32.png"));
+
+  const favicon32 = await generateRoundedFavicon(32);
+  await fs.promises.writeFile(path.join(publicDir, "favicon-32x32.png"), favicon32);
   console.log("✓ favicon-32x32.png  →  public/");
-  await sharp(src)
-    .resize(32, 32)
-    .png()
-    .toFile(path.join(publicDir, "favicon.ico"));
+
+  await fs.promises.writeFile(path.join(publicDir, "favicon.ico"), favicon32);
   console.log("✓ favicon.ico        →  public/");
 
   console.log(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✅ Done!
+✅ Done! Icons in public/icons/, favicons in public/
 
-📱 iOS PWA     → public/icons/icon-ios-192/512.png
-🤖 Android PWA → public/icons/icon-maskable-192/512.png
-🌐 Browser PWA → public/icons/icon-192/512.png
-🍎 Apple Touch → public/apple-touch-icon.png
-🔖 Favicons    → public/favicon.ico / favicon-16x16/32x32.png
+🌐 Browser / iOS (any) → icon-192.png, icon-512.png   (no padding, unchanged)
+🤖 Android (maskable)  → icon-maskable-192.png, icon-maskable-512.png   (10% safe-zone padding)
+🔖 Favicons (rounded)  → favicon-16x16.png, favicon-32x32.png, favicon.ico   (20% corner radius)
 
-Then, copy these lines:
-  cp public/icons/icon-ios-192.png public/icons/icon-192.png
-  cp public/icons/icon-ios-512.png public/icons/icon-512.png
+No manual copy step needed this time — icon-192/512 are
+never overwritten by the maskable versions, so iOS keeps
+rendering exactly as it did before.
+
+Make sure manifest.json still has two separate icon entries:
+  { "src": "/icons/icon-192.png", "purpose": "any", ... }
+  { "src": "/icons/icon-maskable-192.png", "purpose": "maskable", ... }
+(and the matching 512 pair)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   `);
 }
