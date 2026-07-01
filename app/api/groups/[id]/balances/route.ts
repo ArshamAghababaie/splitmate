@@ -22,9 +22,11 @@ export async function GET(
         `
       id,
       paid_by,
+      pending_paid_by,
       amount_toman,
       expense_splits (
         user_id,
+        pending_member_id,
         amount_owed
       )
     `,
@@ -45,9 +47,11 @@ export async function GET(
     const expenseData: ExpenseWithSplits[] = (expenses ?? []).map((e) => ({
       id: e.id,
       paidBy: e.paid_by,
+      pendingPaidBy: e.pending_paid_by,
       amountToman: e.amount_toman,
-      splits: (e.expense_splits ?? []).map((s) => ({
+      splits: ((e.expense_splits ?? []) as { user_id: string | null; pending_member_id: string | null; amount_owed: number }[]).map((s) => ({
         userId: s.user_id,
+        pendingMemberId: s.pending_member_id,
         amountOwed: s.amount_owed,
       })),
     }));
@@ -61,35 +65,73 @@ export async function GET(
     const balances = calculateBalances(expenseData);
     const debts = calculateGroupDebts(expenseData, settlementData);
 
-    const userIds = new Set<string>();
+    // Collect all member IDs to enrich
+    const memberIds = new Set<string>();
+    for (const b of balances) memberIds.add(b.memberId);
     for (const d of debts) {
-      userIds.add(d.fromUser);
-      userIds.add(d.toUser);
+      memberIds.add(d.fromMemberId);
+      memberIds.add(d.toMemberId);
     }
 
-    const { data: profiles } = await supabase
-      .from("profiles")
-      .select("id, full_name, avatar_color")
-      .in("id", Array.from(userIds));
+    const memberIdArr = Array.from(memberIds);
 
-    const profileMap = new Map<
-      string,
-      { full_name: string; avatar_color: string | null }
-    >();
+    // Batch-fetch profiles and pending members
+    const [{ data: profiles }, { data: pendingMembers }] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("id, full_name, email, avatar_color")
+        .in("id", memberIdArr),
+      supabase
+        .from("pending_members")
+        .select("id, email")
+        .in("id", memberIdArr),
+    ]);
+
+    const profileMap = new Map<string, { full_name: string; email: string; avatar_color: string | null }>();
     for (const p of profiles ?? []) {
-      profileMap.set(p.id, {
-        full_name: p.full_name,
-        avatar_color: p.avatar_color,
-      });
+      profileMap.set(p.id, { full_name: p.full_name, email: p.email, avatar_color: p.avatar_color });
+    }
+    const pendingMap = new Map<string, { email: string }>();
+    for (const p of pendingMembers ?? []) {
+      pendingMap.set(p.id, { email: p.email });
     }
 
-    const enrichedDebts = debts.map((d) => ({
-      ...d,
-      fromUserProfile: profileMap.get(d.fromUser) ?? null,
-      toUserProfile: profileMap.get(d.toUser) ?? null,
-    }));
+    const enrichedBalances = balances.map((b) => {
+      const profile = profileMap.get(b.memberId);
+      const pending = pendingMap.get(b.memberId);
+      return {
+        ...b,
+        isPending: !!pending,
+        email: pending?.email,
+        fullName: profile?.full_name ?? null,
+        avatarColor: profile?.avatar_color ?? null,
+      };
+    });
 
-    return NextResponse.json({ balances, debts: enrichedDebts });
+    const enrichedDebts = debts.map((d) => {
+      const fromProfile = profileMap.get(d.fromMemberId);
+      const fromPending = pendingMap.get(d.fromMemberId);
+      const toProfile = profileMap.get(d.toMemberId);
+      const toPending = pendingMap.get(d.toMemberId);
+      return {
+        ...d,
+        fromIsPending: !!fromPending,
+        fromEmail: fromPending?.email,
+        toIsPending: !!toPending,
+        toEmail: toPending?.email,
+        // Legacy fields retained for frontend compatibility (Part B will clean these up)
+        fromUser: d.fromMemberId,
+        toUser: d.toMemberId,
+        fromUserProfile: fromProfile
+          ? { full_name: fromProfile.full_name, avatar_color: fromProfile.avatar_color }
+          : null,
+        toUserProfile: toProfile
+          ? { full_name: toProfile.full_name, avatar_color: toProfile.avatar_color }
+          : null,
+      };
+    });
+
+    return NextResponse.json({ balances: enrichedBalances, debts: enrichedDebts });
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to calculate balances";

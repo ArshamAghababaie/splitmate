@@ -73,7 +73,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { groupId, paidBy, categoryId, amountToman, description, expenseDate, splits } = body;
+    const { groupId, paidBy, pendingPaidBy, categoryId, amountToman, description, expenseDate, splits } = body;
 
     if (typeof amountToman !== "number" || amountToman <= 0 || !Number.isInteger(amountToman)) {
       console.error("POST /api/expenses invalid amountToman:", amountToman);
@@ -91,10 +91,12 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!paidBy || typeof paidBy !== "string") {
-      console.error("POST /api/expenses missing or invalid paidBy:", paidBy);
+    const hasPaidBy = typeof paidBy === "string" && paidBy.length > 0;
+    const hasPendingPaidBy = typeof pendingPaidBy === "string" && pendingPaidBy.length > 0;
+    if (hasPaidBy === hasPendingPaidBy) {
+      console.error("POST /api/expenses payer mismatch — paidBy:", paidBy, "pendingPaidBy:", pendingPaidBy);
       return NextResponse.json(
-        { error: "paidBy is required" },
+        { error: "Exactly one of paidBy or pendingPaidBy must be provided" },
         { status: 400 },
       );
     }
@@ -123,14 +125,15 @@ export async function POST(request: Request) {
 
     const expense = await createExpenseWithSplits(supabase, {
       groupId: (groupId as string) ?? null,
-      paidBy: paidBy as string,
+      paidBy: hasPaidBy ? (paidBy as string) : null,
+      pendingPaidBy: hasPendingPaidBy ? (pendingPaidBy as string) : null,
       categoryId: categoryId as string,
       amountToman: amountToman as number,
       description: (description as string) ?? "",
       expenseDate:
         (expenseDate as string) ?? new Date().toISOString().split("T")[0],
       createdBy: user.id,
-      splits: splits as { userId: string; amountOwed: number }[],
+      splits: splits as { userId: string | null; pendingMemberId?: string | null; amountOwed: number }[],
     });
 
     return NextResponse.json(expense, { status: 201 });

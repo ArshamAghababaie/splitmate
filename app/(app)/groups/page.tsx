@@ -16,17 +16,18 @@ import { UserSearchInput } from "@/components/shared/UserSearchInput";
 import { createClient } from "@/lib/supabase/client";
 import { fetchJSON } from "@/lib/api";
 
-type Member = {
+type MemberPreview = {
   id: string;
-  full_name: string;
-  avatar_color: string | null;
+  fullName: string | null;
+  avatarColor: string | null;
 };
 
 type Group = {
   id: string;
   name: string;
   memberCount: number;
-  members: Member[];
+  pendingCount: number;
+  memberPreview: MemberPreview[];
   netBalance: number;
 };
 
@@ -57,15 +58,13 @@ export default function GroupsPage() {
       const { data: { user } } = await supabase.auth.getUser();
       const currentUserId = user?.id ?? "";
 
-      const data = await fetchJSON<{ id: string; name: string; memberCount: number }[]>("/api/groups");
+      type ApiGroup = { id: string; name: string; memberCount: number; pendingCount: number; memberPreview: MemberPreview[] };
+      const data = await fetchJSON<ApiGroup[]>("/api/groups");
       if (!Array.isArray(data)) return;
 
       const enriched = await Promise.all(
-        data.map(async (g: { id: string; name: string; memberCount: number }) => {
-          const [detail, balData] = await Promise.all([
-            fetchJSON<{ members: Member[] }>(`/api/groups/${g.id}`),
-            fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${g.id}/balances`),
-          ]);
+        data.map(async (g: ApiGroup) => {
+          const balData = await fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${g.id}/balances`);
 
           let net = 0;
           if (balData?.debts) {
@@ -79,11 +78,8 @@ export default function GroupsPage() {
             id: g.id,
             name: g.name,
             memberCount: g.memberCount,
-            members: (detail?.members ?? []).map((m: Member) => ({
-              id: m.id,
-              full_name: m.full_name,
-              avatar_color: m.avatar_color,
-            })),
+            pendingCount: g.pendingCount ?? 0,
+            memberPreview: g.memberPreview ?? [],
             netBalance: net,
           };
         }),
@@ -172,24 +168,27 @@ export default function GroupsPage() {
                     {g.name}
                   </p>
                   <div className="flex items-center gap-2 mt-1">
-                    <div className="flex -space-x-2">
-                      {g.members.slice(0, 4).map((m) => (
-                        <Avatar
-                          key={m.id}
-                          userId={m.id}
-                          name={m.full_name}
-                          size="sm"
-                          color={m.avatar_color}
-                        />
-                      ))}
-                      {g.memberCount > 4 && (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-surface-alt text-xs font-semibold text-ink-muted">
-                          +{g.memberCount - 4}
-                        </div>
-                      )}
-                    </div>
+                    {g.memberPreview.length > 0 && (
+                      <div className="flex -space-x-2">
+                        {g.memberPreview.map((m) => (
+                          <Avatar
+                            key={m.id}
+                            userId={m.id}
+                            name={m.fullName ?? ""}
+                            size="sm"
+                            color={m.avatarColor}
+                          />
+                        ))}
+                        {g.memberCount > 4 && (
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-surface-alt text-xs font-semibold text-ink-muted">
+                            +{g.memberCount - 4}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <span className="text-xs text-ink-muted">
-                      {g.memberCount} {g.memberCount === 1 ? "member" : "members"}
+                      {g.memberCount === 1 ? "1 member" : `${g.memberCount} members`}
+                      {g.pendingCount > 0 ? ` · ${g.pendingCount} pending` : ""}
                     </span>
                   </div>
                 </div>

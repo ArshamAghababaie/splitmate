@@ -2,13 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 type CreateExpenseInput = {
   groupId: string | null;
-  paidBy: string;
+  paidBy: string | null;
+  pendingPaidBy: string | null;
   categoryId: string;
   amountToman: number;
   description: string;
   expenseDate: string;
   createdBy: string;
-  splits: { userId: string; amountOwed: number }[];
+  splits: { userId: string | null; pendingMemberId?: string | null; amountOwed: number }[];
 };
 
 export async function createExpenseWithSplits(
@@ -20,6 +21,7 @@ export async function createExpenseWithSplits(
     {
       p_group_id: data.groupId,
       p_paid_by: data.paidBy,
+      p_pending_paid_by: data.pendingPaidBy,
       p_category_id: data.categoryId,
       p_amount_toman: data.amountToman,
       p_description: data.description,

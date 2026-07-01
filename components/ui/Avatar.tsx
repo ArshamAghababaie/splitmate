@@ -17,7 +17,7 @@ const sizeStyles: Record<AvatarSize, string> = {
 
 export function Avatar({ userId, name, size = "md", color }: AvatarProps) {
   const bgColor = color ?? getAvatarColor(userId);
-  const initial = name.charAt(0).toUpperCase() || "?";
+  const initial = (name ?? "?").charAt(0).toUpperCase() || "?";
 
   return (
     <div

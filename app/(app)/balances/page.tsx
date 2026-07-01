@@ -5,6 +5,7 @@ import { CheckCircle, Check, Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { GhostAvatar } from "@/components/ui/GhostAvatar";
 import { AmountDisplay } from "@/components/ui/AmountDisplay";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -19,6 +20,10 @@ type DebtItem = {
   groupId: string;
   fromUser: string;
   toUser: string;
+  fromIsPending: boolean;
+  fromEmail?: string;
+  toIsPending: boolean;
+  toEmail?: string;
   amountToman: number;
   fromUserProfile: { full_name: string; avatar_color: string | null } | null;
   toUserProfile: { full_name: string; avatar_color: string | null } | null;
@@ -28,6 +33,8 @@ type PersonBalance = {
   userId: string;
   name: string;
   avatarColor: string | null;
+  isPending: boolean;
+  email?: string;
   net: number;
   debts: DebtItem[];
 };
@@ -46,7 +53,9 @@ export default function BalancesPage() {
   const loadData = useCallback(async () => {
     try {
       const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
       setUserId(user.id);
 
@@ -56,7 +65,9 @@ export default function BalancesPage() {
       const allDebts: DebtItem[] = [];
       await Promise.all(
         groupsData.map(async (g: { id: string }) => {
-          const balData = await fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${g.id}/balances`);
+          const balData = await fetchJSON<{ debts: DebtItem[] }>(
+            `/api/groups/${g.id}/balances`,
+          );
           if (!balData?.debts) return;
           for (const d of balData.debts) {
             if (d.fromUser === user.id || d.toUser === user.id) {
@@ -74,6 +85,8 @@ export default function BalancesPage() {
         const youOwe = d.fromUser === user.id;
         const otherId = youOwe ? d.toUser : d.fromUser;
         const otherProfile = youOwe ? d.toUserProfile : d.fromUserProfile;
+        const otherIsPending = youOwe ? d.toIsPending : d.fromIsPending;
+        const otherEmail = youOwe ? d.toEmail : d.fromEmail;
         const amount = youOwe ? -d.amountToman : d.amountToman;
 
         if (youOwe) owe += d.amountToman;
@@ -86,8 +99,12 @@ export default function BalancesPage() {
         } else {
           personMap.set(otherId, {
             userId: otherId,
-            name: otherProfile?.full_name ?? "Unknown",
+            name: otherIsPending
+              ? (otherEmail ?? "Pending")
+              : (otherProfile?.full_name ?? "Unknown"),
             avatarColor: otherProfile?.avatar_color ?? null,
+            isPending: otherIsPending,
+            email: otherEmail,
             net: amount,
             debts: [d],
           });
@@ -98,7 +115,9 @@ export default function BalancesPage() {
       setTotalOwe(owe);
       setNetBalance(owed - owe);
       setPersonBalances(
-        Array.from(personMap.values()).sort((a, b) => Math.abs(b.net) - Math.abs(a.net)),
+        Array.from(personMap.values()).sort(
+          (a, b) => Math.abs(b.net) - Math.abs(a.net),
+        ),
       );
     } finally {
       setLoading(false);
@@ -162,9 +181,15 @@ export default function BalancesPage() {
             <Card className="text-center">
               <p className="text-xs text-ink-muted mb-1">{balanceLabel}</p>
               {netBalance !== 0 ? (
-                <AmountDisplay amount={netBalance} showSign className="text-2xl" />
+                <AmountDisplay
+                  amount={netBalance}
+                  showSign
+                  className="text-2xl"
+                />
               ) : (
-                <p className="font-display text-2xl font-bold text-neutral">0</p>
+                <p className="font-display text-2xl font-bold text-neutral">
+                  0
+                </p>
               )}
               <div className="mt-3 flex justify-center gap-6 text-xs">
                 <div>
@@ -195,49 +220,70 @@ export default function BalancesPage() {
                   const isSettled = person.debts.every((d) =>
                     settledIds.has(`${d.fromUser}-${d.toUser}-${d.groupId}`),
                   );
+                  const canSettle = !isSettled && !person.isPending;
                   return (
-                    <Card
-                      key={person.userId}
-                      className={`flex items-center gap-3 transition-all duration-500 ${
-                        isSettled ? "opacity-40" : ""
-                      }`}
-                    >
-                      <Avatar
-                        userId={person.userId}
-                        name={person.name}
-                        color={person.avatarColor}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate">
-                          {person.name}
-                        </p>
-                        <p className="text-xs text-ink-muted">
-                          {person.net > 0
-                            ? "Owes you"
-                            : "You owe"}
-                        </p>
-                      </div>
-                      {isSettled ? (
-                        <div className="flex items-center gap-1 text-positive text-sm font-semibold">
-                          <Check size={16} />
-                          Settled!
-                        </div>
-                      ) : (
-                        <>
-                          <AmountDisplay
-                            amount={person.net}
-                            className="text-sm transition-colors duration-700"
+                    <div key={person.userId} className="flex flex-col gap-1">
+                      <Card
+                        className={`flex items-center gap-3 transition-all duration-500 ${
+                          isSettled ? "opacity-40" : ""
+                        }`}
+                      >
+                        {person.isPending ? (
+                          <GhostAvatar />
+                        ) : (
+                          <Avatar
+                            userId={person.userId}
+                            name={person.name}
+                            color={person.avatarColor}
                           />
-                          <button
-                            onClick={() => setSettleDebt(person.debts[0])}
-                            className="flex items-center gap-1 rounded-lg border-2 border-ink bg-positive/10 px-2 py-1 text-xs font-semibold text-positive hover:bg-positive/20 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all duration-150"
-                          >
-                            <CheckCircle size={14} />
-                            Settle
-                          </button>
-                        </>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p
+                              className={`text-sm font-semibold truncate ${person.isPending ? "text-ink-muted" : ""}`}
+                            >
+                              {person.name}
+                            </p>
+                            {person.isPending && (
+                              <span className="text-xs font-semibold text-ink/50 bg-ink/5 px-1.5 py-0.5 rounded border border-ink/20 shrink-0">
+                                Pending
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-ink-muted">
+                            {person.net > 0 ? "Owes you" : "You owe"}
+                          </p>
+                        </div>
+                        {isSettled ? (
+                          <div className="flex items-center gap-1 text-positive text-sm font-semibold">
+                            <Check size={16} />
+                            Settled!
+                          </div>
+                        ) : (
+                          <>
+                            <AmountDisplay
+                              amount={person.net}
+                              className="text-sm transition-colors duration-700"
+                            />
+                            {canSettle && (
+                              <button
+                                onClick={() => setSettleDebt(person.debts[0])}
+                                className="flex items-center gap-1 rounded-lg border-2 border-ink bg-positive/10 px-2 py-1 text-xs font-semibold text-positive hover:bg-positive/20 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all duration-150"
+                              >
+                                <CheckCircle size={14} />
+                                Settle
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </Card>
+                      {person.isPending && (
+                        <p className="text-xs text-ink-muted px-1 pt-1">
+                          {person.email ?? person.name} &nbsp;hasn&apos;t signed
+                          up yet. Their balance will update when they join.
+                        </p>
                       )}
-                    </Card>
+                    </div>
                   );
                 })}
               </div>
@@ -255,9 +301,17 @@ export default function BalancesPage() {
           <div className="flex flex-col gap-4">
             <Card className="text-center">
               <p className="text-sm text-ink-muted">
-                {settleDebt.fromUser === userId ? "You" : settleDebt.fromUserProfile?.full_name ?? "?"}{" "}
+                {settleDebt.fromUser === userId
+                  ? "You"
+                  : settleDebt.fromIsPending
+                    ? (settleDebt.fromEmail ?? "?")
+                    : (settleDebt.fromUserProfile?.full_name ?? "?")}{" "}
                 {settleDebt.fromUser === userId ? "pay" : "pays"}{" "}
-                {settleDebt.toUser === userId ? "you" : settleDebt.toUserProfile?.full_name ?? "?"}
+                {settleDebt.toUser === userId
+                  ? "you"
+                  : settleDebt.toIsPending
+                    ? (settleDebt.toEmail ?? "?")
+                    : (settleDebt.toUserProfile?.full_name ?? "?")}
               </p>
               <AmountDisplay
                 amount={settleDebt.amountToman}

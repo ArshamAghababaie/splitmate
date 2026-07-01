@@ -7,6 +7,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Avatar } from "@/components/ui/Avatar";
+import { GhostAvatar } from "@/components/ui/GhostAvatar";
 import { Card } from "@/components/ui/Card";
 import { AmountDisplay } from "@/components/ui/AmountDisplay";
 import { CategoryPicker } from "@/components/shared/CategoryPicker";
@@ -17,9 +18,16 @@ type Category = { id: string; name: string; icon: string };
 type Group = { id: string; name: string };
 type Member = {
   id: string;
-  full_name: string;
+  fullName: string | null;
   email: string;
-  avatar_color?: string | null;
+  avatarColor?: string | null;
+  isPending: boolean;
+};
+
+type SplitEntry = {
+  userId: string | null;
+  pendingMemberId: string | null;
+  amountOwed: number;
 };
 
 type EditData = {
@@ -27,10 +35,11 @@ type EditData = {
   description: string;
   amountToman: number;
   categoryId: string;
-  paidBy: string;
+  paidBy: string | null;
+  pendingPaidBy?: string | null;
   groupId: string;
   expenseDate: string;
-  splits: { userId: string; amountOwed: number }[];
+  splits: { userId: string | null; pendingMemberId?: string | null; amountOwed: number }[];
 };
 
 type AddExpenseDrawerProps = {
@@ -60,6 +69,7 @@ export function AddExpenseDrawer({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [paidBy, setPaidBy] = useState(userId);
+  const [pendingPaidBy, setPendingPaidBy] = useState("");
   const [splitType, setSplitType] = useState<"equal" | "custom" | "percentage">(
     "equal",
   );
@@ -98,7 +108,7 @@ export function AddExpenseDrawer({
         return r.json();
       })
       .then((data) => {
-        if (data?.members) setMembers(data.members);
+        if (Array.isArray(data?.members)) setMembers(data.members);
       })
       .catch(() => {});
   }, [groupId]);
@@ -110,6 +120,7 @@ export function AddExpenseDrawer({
     setCategoryId("");
     setGroupId(prefilledGroupId ?? "");
     setPaidBy(userId);
+    setPendingPaidBy("");
     setSplitType("equal");
     setCustomSplits({});
     setPercentageSplits({});
@@ -124,12 +135,14 @@ export function AddExpenseDrawer({
       setAmount(String(editData.amountToman));
       setDescription(editData.description);
       setCategoryId(editData.categoryId);
-      setPaidBy(editData.paidBy);
+      setPaidBy(editData.paidBy ?? "");
+      setPendingPaidBy(editData.pendingPaidBy ?? "");
       setGroupId(editData.groupId);
       setSplitType("custom");
       const custom: Record<string, string> = {};
       for (const s of editData.splits) {
-        custom[s.userId] = String(s.amountOwed);
+        const key = s.userId ?? s.pendingMemberId;
+        if (key) custom[key] = String(s.amountOwed);
       }
       setCustomSplits(custom);
     }
@@ -137,31 +150,43 @@ export function AddExpenseDrawer({
 
   const amountNum = parseInt(amount, 10) || 0;
 
-  const computedSplits = (): { userId: string; amountOwed: number }[] => {
-    const splitUsers = groupId ? members.map((m) => m.id) : [userId];
-    if (splitUsers.length === 0) return [];
+  // Members who can appear in splits (all, including pending)
+  const splitMembers = groupId
+    ? members
+    : [{ id: userId, fullName: "You", email: "", avatarColor: null, isPending: false }];
+
+  // Members who can be payer (all members including pending)
+  const payerMembers = groupId
+    ? members
+    : [{ id: userId, fullName: "You", email: "", avatarColor: null, isPending: false }];
+
+  const computedSplits = (): SplitEntry[] => {
+    if (splitMembers.length === 0) return [];
 
     if (splitType === "equal") {
-      const base = Math.floor(amountNum / splitUsers.length);
-      const remainder = amountNum % splitUsers.length;
-      return splitUsers.map((uid, i) => ({
-        userId: uid,
+      const base = Math.floor(amountNum / splitMembers.length);
+      const remainder = amountNum % splitMembers.length;
+      return splitMembers.map((m, i) => ({
+        userId: m.isPending ? null : m.id,
+        pendingMemberId: m.isPending ? m.id : null,
         amountOwed: base + (i < remainder ? 1 : 0),
       }));
     }
 
     if (splitType === "custom") {
-      return splitUsers.map((uid) => ({
-        userId: uid,
-        amountOwed: parseInt(customSplits[uid] ?? "0", 10) || 0,
+      return splitMembers.map((m) => ({
+        userId: m.isPending ? null : m.id,
+        pendingMemberId: m.isPending ? m.id : null,
+        amountOwed: parseInt(customSplits[m.id] ?? "0", 10) || 0,
       }));
     }
 
     // percentage
-    return splitUsers.map((uid) => {
-      const pct = parseFloat(percentageSplits[uid] ?? "0") || 0;
+    return splitMembers.map((m) => {
+      const pct = parseFloat(percentageSplits[m.id] ?? "0") || 0;
       return {
-        userId: uid,
+        userId: m.isPending ? null : m.id,
+        pendingMemberId: m.isPending ? m.id : null,
         amountOwed: Math.round((amountNum * pct) / 100),
       };
     });
@@ -174,8 +199,12 @@ export function AddExpenseDrawer({
     amountNum > 0 && description.trim().length > 0 && categoryId;
   const canProceedStep2 = splitValid;
 
-  const getMemberName = (id: string) =>
-    members.find((m) => m.id === id)?.full_name ?? "You";
+  const getMemberLabel = (id: string) => {
+    const m = members.find((m) => m.id === id);
+    if (!m) return "You";
+    if (m.isPending) return m.email;
+    return m.fullName ?? m.email;
+  };
 
   const selectedCategory = categories.find((c) => c.id === categoryId);
 
@@ -194,7 +223,8 @@ export function AddExpenseDrawer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           groupId: groupId || null,
-          paidBy,
+          paidBy: pendingPaidBy ? null : paidBy || null,
+          pendingPaidBy: pendingPaidBy || null,
           categoryId,
           amountToman: amountNum,
           description: description.trim(),
@@ -306,30 +336,54 @@ export function AddExpenseDrawer({
                 Who paid?
               </label>
               <div className="flex gap-2 overflow-x-auto pb-1">
-                {(groupId && members.length > 0
-                  ? members
-                  : [{ id: userId, full_name: "You", avatar_color: null }]
-                ).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => setPaidBy(m.id)}
-                    className={`flex flex-col items-center gap-1 rounded-lg p-2 min-w-15 transition-all duration-150 ${
-                      paidBy === m.id
-                        ? "border-2 border-ink bg-primary shadow-[2px_2px_0px_#0D0D0D]"
-                        : "border-2 border-transparent hover:border-ink/30"
-                    }`}
-                  >
-                    <Avatar
-                      userId={m.id}
-                      name={m.full_name}
-                      size="sm"
-                      color={m.avatar_color}
-                    />
-                    <span className="text-[10px] font-medium text-ink truncate max-w-14">
-                      {m.id === userId ? "You" : m.full_name.split(" ")[0]}
-                    </span>
-                  </button>
-                ))}
+                {(payerMembers.length > 0
+                  ? payerMembers
+                  : [{ id: userId, fullName: "You", email: "", avatarColor: null, isPending: false }]
+                ).map((m) => {
+                  const isSelected = m.isPending
+                    ? pendingPaidBy === m.id
+                    : paidBy === m.id;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        if (m.isPending) {
+                          setPendingPaidBy(m.id);
+                          setPaidBy("");
+                        } else {
+                          setPaidBy(m.id);
+                          setPendingPaidBy("");
+                        }
+                      }}
+                      className={`flex flex-col items-center gap-1 rounded-lg p-2 min-w-15 transition-all duration-150 ${
+                        isSelected
+                          ? "border-2 border-ink bg-primary shadow-[2px_2px_0px_#0D0D0D]"
+                          : "border-2 border-transparent hover:border-ink/30"
+                      }`}
+                    >
+                      {m.isPending ? (
+                        <GhostAvatar size="sm" />
+                      ) : (
+                        <Avatar
+                          userId={m.id}
+                          name={m.fullName ?? m.email}
+                          size="sm"
+                          color={m.avatarColor}
+                        />
+                      )}
+                      <span className="text-[10px] font-medium text-ink truncate max-w-14">
+                        {m.isPending
+                          ? m.email.split("@")[0]
+                          : m.id === userId
+                            ? "You"
+                            : (m.fullName ?? m.email).split(" ")[0]}
+                      </span>
+                      {m.isPending && (
+                        <span className="text-[8px] text-ink-muted leading-none">(pending)</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -380,7 +434,7 @@ export function AddExpenseDrawer({
               </p>
             </Card>
 
-            {groupId && members.length > 1 && (
+            {groupId && splitMembers.length > 1 && (
               <SplitTypeSelector
                 value={splitType}
                 onChange={(t) => {
@@ -392,25 +446,39 @@ export function AddExpenseDrawer({
             )}
 
             <div className="space-y-2">
-              {(groupId
-                ? members
-                : [{ id: userId, full_name: "You", avatar_color: null }]
-              ).map((m) => {
+              {splitMembers.map((m) => {
                 const splits = computedSplits();
-                const mySplit = splits.find((s) => s.userId === m.id);
+                const mySplit = splits.find((s) =>
+                  m.isPending
+                    ? s.pendingMemberId === m.id
+                    : s.userId === m.id,
+                );
                 return (
                   <div
                     key={m.id}
                     className="flex items-center gap-3 rounded-lg border-2 border-ink/20 bg-surface p-3"
                   >
-                    <Avatar
-                      userId={m.id}
-                      name={m.full_name}
-                      size="sm"
-                      color={m.avatar_color}
-                    />
+                    {m.isPending ? (
+                      <GhostAvatar size="sm" />
+                    ) : (
+                      <Avatar
+                        userId={m.id}
+                        name={m.fullName ?? m.email}
+                        size="sm"
+                        color={m.avatarColor}
+                      />
+                    )}
                     <span className="flex-1 text-sm font-medium truncate">
-                      {m.id === userId ? "You" : m.full_name}
+                      {m.isPending ? (
+                        <>
+                          <span className="truncate">{m.email}</span>
+                          <span className="text-ink-muted"> (pending)</span>
+                        </>
+                      ) : m.id === userId ? (
+                        "You"
+                      ) : (
+                        (m.fullName ?? m.email)
+                      )}
                     </span>
 
                     {splitType === "equal" && (
@@ -523,7 +591,11 @@ export function AddExpenseDrawer({
                 <div className="flex justify-between text-sm">
                   <span className="text-ink-muted">Paid by</span>
                   <span className="font-medium">
-                    {paidBy === userId ? "You" : getMemberName(paidBy)}
+                    {pendingPaidBy
+                      ? getMemberLabel(pendingPaidBy)
+                      : paidBy === userId
+                        ? "You"
+                        : getMemberLabel(paidBy)}
                   </span>
                 </div>
                 {groupId && (
@@ -545,19 +617,28 @@ export function AddExpenseDrawer({
                 Split preview
               </p>
               <div className="space-y-1.5">
-                {computedSplits().map((s) => (
-                  <div
-                    key={s.userId}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span>
-                      {s.userId === userId ? "You" : getMemberName(s.userId)}
-                    </span>
-                    <span className="font-display font-bold">
-                      {formatAmount(s.amountOwed)} Toman
-                    </span>
-                  </div>
-                ))}
+                {computedSplits().map((s) => {
+                  const memberId = s.userId ?? s.pendingMemberId;
+                  const m = members.find((m) => m.id === memberId);
+                  const label = m?.isPending
+                    ? m.email
+                    : s.userId === userId
+                      ? "You"
+                      : getMemberLabel(s.userId ?? "");
+                  return (
+                    <div
+                      key={memberId}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <span className={m?.isPending ? "text-ink-muted" : ""}>
+                        {label}
+                      </span>
+                      <span className="font-display font-bold">
+                        {formatAmount(s.amountOwed)} Toman
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

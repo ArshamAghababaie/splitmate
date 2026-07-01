@@ -42,12 +42,13 @@ describe("calculateBalances", () => {
       {
         id: "e1",
         paidBy: "A",
+        pendingPaidBy: null,
         amountToman: 100_000,
-        splits: [{ userId: "B", amountOwed: 100_000 }],
+        splits: [{ userId: "B", pendingMemberId: null, amountOwed: 100_000 }],
       },
     ]);
-    const aBalance = balances.find((b) => b.userId === "A");
-    const bBalance = balances.find((b) => b.userId === "B");
+    const aBalance = balances.find((b) => b.memberId === "A");
+    const bBalance = balances.find((b) => b.memberId === "B");
     assert.equal(aBalance?.net, 100_000);
     assert.equal(bBalance?.net, -100_000);
   });
@@ -56,12 +57,12 @@ describe("calculateBalances", () => {
 describe("simplifyDebts", () => {
   it("simple two-person debt", () => {
     const debts = simplifyDebts([
-      { userId: "A", net: 100_000 },
-      { userId: "B", net: -100_000 },
+      { memberId: "A", net: 100_000, isPending: false },
+      { memberId: "B", net: -100_000, isPending: false },
     ]);
     assert.equal(debts.length, 1);
-    assert.equal(debts[0].fromUser, "B");
-    assert.equal(debts[0].toUser, "A");
+    assert.equal(debts[0].fromMemberId, "B");
+    assert.equal(debts[0].toMemberId, "A");
     assert.equal(debts[0].amountToman, 100_000);
   });
 
@@ -72,17 +73,19 @@ describe("simplifyDebts", () => {
       {
         id: "e1",
         paidBy: "A",
+        pendingPaidBy: null,
         amountToman: 200_000,
         splits: [
-          { userId: "B", amountOwed: 100_000 },
-          { userId: "C", amountOwed: 100_000 },
+          { userId: "B", pendingMemberId: null, amountOwed: 100_000 },
+          { userId: "C", pendingMemberId: null, amountOwed: 100_000 },
         ],
       },
       {
         id: "e2",
         paidBy: "B",
+        pendingPaidBy: null,
         amountToman: 100_000,
-        splits: [{ userId: "C", amountOwed: 100_000 }],
+        splits: [{ userId: "C", pendingMemberId: null, amountOwed: 100_000 }],
       },
     ]);
     const debts = simplifyDebts(balances);
@@ -95,8 +98,8 @@ describe("simplifyDebts", () => {
 
   it("returns empty when everyone is even", () => {
     const debts = simplifyDebts([
-      { userId: "A", net: 0 },
-      { userId: "B", net: 0 },
+      { memberId: "A", net: 0, isPending: false },
+      { memberId: "B", net: 0, isPending: false },
     ]);
     assert.equal(debts.length, 0);
   });
@@ -109,15 +112,16 @@ describe("calculateGroupDebts", () => {
         {
           id: "e1",
           paidBy: "A",
+          pendingPaidBy: null,
           amountToman: 100_000,
-          splits: [{ userId: "B", amountOwed: 100_000 }],
+          splits: [{ userId: "B", pendingMemberId: null, amountOwed: 100_000 }],
         },
       ],
       [{ fromUser: "B", toUser: "A", amountToman: 60_000 }],
     );
     assert.equal(debts.length, 1);
-    assert.equal(debts[0].fromUser, "B");
-    assert.equal(debts[0].toUser, "A");
+    assert.equal(debts[0].fromMemberId, "B");
+    assert.equal(debts[0].toMemberId, "A");
     assert.equal(debts[0].amountToman, 40_000);
   });
 });

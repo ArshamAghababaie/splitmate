@@ -13,18 +13,21 @@ import {
   Trash2,
   Pencil,
   LogOut,
+  Copy,
+  Check,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Avatar } from "@/components/ui/Avatar";
+import { GhostAvatar } from "@/components/ui/GhostAvatar";
 import { AmountDisplay } from "@/components/ui/AmountDisplay";
 import { SkeletonCard } from "@/components/ui/SkeletonCard";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FAB } from "@/components/layout/FAB";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { AddExpenseDrawer } from "../../dashboard/add-expense-drawer";
-import { UserSearchInput } from "@/components/shared/UserSearchInput";
 import { PullToRefresh } from "@/components/ui/PullToRefresh";
 import { getCategoryIcon } from "@/lib/category-icons";
 import { hapticSuccess, hapticError } from "@/lib/haptics";
@@ -35,9 +38,18 @@ import { useToast } from "@/components/ui/Toast";
 
 type Member = {
   id: string;
-  full_name: string;
+  fullName: string | null;
   email: string;
-  avatar_color: string | null;
+  avatarColor: string | null;
+  isPending: boolean;
+};
+
+type ExpenseSplit = {
+  userId: string | null;
+  pendingMemberId: string | null;
+  isPending: boolean;
+  amountOwed: number;
+  email?: string | null;
 };
 
 type Expense = {
@@ -46,31 +58,36 @@ type Expense = {
   description: string;
   expense_date: string;
   created_by?: string;
-  paid_by?: string;
+  paid_by?: string | null;
+  pending_paid_by?: string | null;
   category_id?: string;
   group_id?: string;
   categories: { name: string; icon: string } | null;
-  profiles: {
+  payer: {
     id: string;
-    full_name: string;
-    avatar_color: string | null;
+    fullName: string | null;
+    email: string | null;
+    avatarColor: string | null;
+    isPending: boolean;
   } | null;
-  expense_splits: { user_id: string; amount_owed: number }[];
+  expense_splits: ExpenseSplit[];
 };
 
 type DebtItem = {
   fromUser: string;
   toUser: string;
   amountToman: number;
+  fromIsPending: boolean;
+  fromEmail?: string;
+  toIsPending: boolean;
+  toEmail?: string;
   fromUserProfile: { full_name: string; avatar_color: string | null } | null;
   toUserProfile: { full_name: string; avatar_color: string | null } | null;
 };
 
-type SelectedUser = {
-  id: string;
-  full_name: string;
+type PendingInviteResult = {
   email: string;
-  avatar_color: string | null;
+  inviteText: string;
 };
 
 export default function GroupDetailPage() {
@@ -79,7 +96,7 @@ export default function GroupDetailPage() {
   const { toast } = useToast();
   const [group, setGroup] = useState<{
     name: string;
-    created_by: string;
+    createdBy: string;
     members: Member[];
   } | null>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -119,35 +136,49 @@ export default function GroupDetailPage() {
   const [editExpense, setEditExpense] = useState<Expense | null>(null);
 
   // Add member state
-  const [selectedMembers, setSelectedMembers] = useState<SelectedUser[]>([]);
+  const [emailInput, setEmailInput] = useState("");
   const [addingMember, setAddingMember] = useState(false);
+  const [pendingInviteResult, setPendingInviteResult] =
+    useState<PendingInviteResult | null>(null);
+  const [copyDone, setCopyDone] = useState(false);
 
-  const isCreator = group?.created_by === userId;
+  const isCreator = group?.createdBy === userId;
 
-  const loadData = useCallback(
-    async () => {
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (user) setUserId(user.id);
+  const loadData = useCallback(async () => {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (user) setUserId(user.id);
 
-        const [groupData, expData, balData] = await Promise.all([
-          fetchJSON<{ name: string; created_by: string; members: Member[] }>(`/api/groups/${id}`),
-          fetchJSON<Expense[]>(`/api/groups/${id}/expenses`),
-          fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${id}/balances`),
-        ]);
+      const [groupData, expData, balData] = await Promise.all([
+        fetchJSON<{
+          group: {
+            id: string;
+            name: string;
+            createdBy: string;
+            createdAt: string;
+          };
+          members: Member[];
+        }>(`/api/groups/${id}`),
+        fetchJSON<Expense[]>(`/api/groups/${id}/expenses`),
+        fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${id}/balances`),
+      ]);
 
-        if (groupData?.name) setGroup(groupData);
-        if (Array.isArray(expData)) setExpenses(expData);
-        if (balData?.debts) setDebts(balData.debts);
-      } finally {
-        setLoading(false);
+      if (groupData?.group) {
+        setGroup({
+          name: groupData.group.name,
+          createdBy: groupData.group.createdBy,
+          members: groupData.members ?? [],
+        });
       }
-    },
-    [id],
-  );
+      if (Array.isArray(expData)) setExpenses(expData);
+      if (balData?.debts) setDebts(balData.debts);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
     loadData();
@@ -155,30 +186,65 @@ export default function GroupDetailPage() {
 
   // Add member
   const handleAddMember = async () => {
-    if (selectedMembers.length === 0) return;
+    const email = emailInput.trim().toLowerCase();
+    if (!email) return;
     setAddingMember(true);
     try {
-      for (const member of selectedMembers) {
-        const res = await fetch(`/api/groups/${id}/members`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: member.email }),
-        });
-        if (!res.ok) {
-          const data = await res.json();
-          toast.error(data.error || "Failed to add member");
-          setAddingMember(false);
-          return;
-        }
+      const res = await fetch(`/api/groups/${id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Failed to add member");
+        return;
       }
-      setSelectedMembers([]);
-      setAddMemberOpen(false);
-      toast.success("Member added successfully");
-      loadData();
+      if (data.status === "added") {
+        setEmailInput("");
+        setPendingInviteResult(null);
+        setAddMemberOpen(false);
+        hapticSuccess();
+        toast.success("Member added successfully");
+        setGroup((prev) =>
+          prev
+            ? { ...prev, members: [...prev.members, { ...data.member, isPending: false }] }
+            : prev,
+        );
+      } else if (data.status === "pending") {
+        setPendingInviteResult({
+          email: data.pendingMember.email,
+          inviteText: data.inviteText,
+        });
+        setEmailInput("");
+        hapticSuccess();
+        const newPending: Member = {
+          id: data.pendingMember.id,
+          email: data.pendingMember.email,
+          fullName: null,
+          avatarColor: null,
+          isPending: true,
+        };
+        setGroup((prev) =>
+          prev ? { ...prev, members: [...prev.members, newPending] } : prev,
+        );
+      }
     } catch {
+      hapticError();
       toast.error("Failed to add member");
     } finally {
       setAddingMember(false);
+    }
+  };
+
+  const handleCopyInvite = async () => {
+    if (!pendingInviteResult) return;
+    try {
+      await navigator.clipboard.writeText(pendingInviteResult.inviteText);
+      setCopyDone(true);
+      setTimeout(() => setCopyDone(false), 2000);
+    } catch {
+      toast.error("Could not copy to clipboard");
     }
   };
 
@@ -312,8 +378,6 @@ export default function GroupDetailPage() {
     memberMap.set(m.id, m);
   }
 
-  const existingMemberIds = new Set(group?.members.map((m) => m.id) ?? []);
-
   const editDataMemo = useMemo(
     () =>
       editExpense
@@ -322,12 +386,14 @@ export default function GroupDetailPage() {
             description: editExpense.description,
             amountToman: editExpense.amount_toman,
             categoryId: editExpense.category_id ?? "",
-            paidBy: editExpense.paid_by ?? userId,
+            paidBy: editExpense.paid_by ?? (editExpense.pending_paid_by ? null : userId),
+            pendingPaidBy: editExpense.pending_paid_by ?? null,
             groupId: editExpense.group_id ?? id,
             expenseDate: editExpense.expense_date,
             splits: editExpense.expense_splits.map((s) => ({
-              userId: s.user_id,
-              amountOwed: s.amount_owed,
+              userId: s.userId,
+              pendingMemberId: s.pendingMemberId,
+              amountOwed: s.amountOwed,
             })),
           }
         : undefined,
@@ -416,7 +482,9 @@ export default function GroupDetailPage() {
 
                   <Card
                     className={`relative overflow-hidden transition-transform duration-200 ${
-                      isSwiped && canModify ? "-translate-x-24" : "translate-x-0"
+                      isSwiped && canModify
+                        ? "-translate-x-24"
+                        : "translate-x-0"
                     }`}
                     onTouchStart={(e: React.TouchEvent) =>
                       handleExpenseTouchStart(e, exp.id)
@@ -440,20 +508,29 @@ export default function GroupDetailPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate">
-                          {exp.description ||
-                            exp.categories?.name ||
-                            "Expense"}
+                          {exp.description || exp.categories?.name || "Expense"}
                         </p>
                         <div className="flex items-center gap-1.5 text-xs text-ink-muted">
-                          {exp.profiles && (
-                            <Avatar
-                              userId={exp.profiles.id}
-                              name={exp.profiles.full_name}
-                              size="sm"
-                              color={exp.profiles.avatar_color}
-                            />
+                          {exp.payer && (
+                            exp.payer.isPending ? (
+                              <GhostAvatar size="sm" />
+                            ) : (
+                              <Avatar
+                                userId={exp.payer.id}
+                                name={exp.payer.fullName ?? "?"}
+                                size="sm"
+                                color={exp.payer.avatarColor}
+                              />
+                            )
                           )}
-                          <span>{exp.profiles?.full_name ?? "?"}</span>
+                          <span>
+                            {exp.payer?.isPending
+                              ? exp.payer.email
+                              : (exp.payer?.fullName ?? "?")}
+                          </span>
+                          {exp.payer?.isPending && (
+                            <span className="text-ink-muted">(pending)</span>
+                          )}
                           <span>&middot;</span>
                           <span>{relativeDate(exp.expense_date)}</span>
                         </div>
@@ -475,17 +552,26 @@ export default function GroupDetailPage() {
                       <div className="mt-3 border-t border-ink/10 pt-3 space-y-3">
                         {/* Payer + Category + Date */}
                         <div className="flex items-center gap-3 text-xs">
-                          {exp.profiles && (
+                          {exp.payer && (
                             <div className="flex items-center gap-1.5">
-                              <Avatar
-                                userId={exp.profiles.id}
-                                name={exp.profiles.full_name}
-                                size="sm"
-                                color={exp.profiles.avatar_color}
-                              />
+                              {exp.payer.isPending ? (
+                                <GhostAvatar size="sm" />
+                              ) : (
+                                <Avatar
+                                  userId={exp.payer.id}
+                                  name={exp.payer.fullName ?? "?"}
+                                  size="sm"
+                                  color={exp.payer.avatarColor}
+                                />
+                              )}
                               <span className="font-semibold">
-                                {exp.profiles.full_name}
+                                {exp.payer.isPending
+                                  ? exp.payer.email
+                                  : exp.payer.fullName}
                               </span>
+                              {exp.payer.isPending && (
+                                <span className="text-ink-muted">(pending)</span>
+                              )}
                               <span className="text-ink-muted">paid</span>
                             </div>
                           )}
@@ -505,26 +591,44 @@ export default function GroupDetailPage() {
                             <p className="text-xs font-semibold text-ink-muted">
                               Split details
                             </p>
-                            {exp.expense_splits.map((split) => {
-                              const member = memberMap.get(split.user_id);
+                            {exp.expense_splits.map((split, idx) => {
+                              if (split.isPending) {
+                                return (
+                                  <div
+                                    key={
+                                      split.pendingMemberId ?? `pending-${idx}`
+                                    }
+                                    className="flex items-center justify-between text-xs"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <GhostAvatar size="sm" />
+                                      <span className="text-ink-muted">
+                                        {split.email ?? "Pending member"}
+                                      </span>
+                                    </div>
+                                    <span className="font-display font-semibold">
+                                      {formatAmount(split.amountOwed)} Toman
+                                    </span>
+                                  </div>
+                                );
+                              }
+                              const member = memberMap.get(split.userId!);
                               return (
                                 <div
-                                  key={split.user_id}
+                                  key={split.userId}
                                   className="flex items-center justify-between text-xs"
                                 >
                                   <div className="flex items-center gap-2">
                                     <Avatar
-                                      userId={split.user_id}
-                                      name={member?.full_name ?? "?"}
+                                      userId={split.userId!}
+                                      name={member?.fullName ?? "?"}
                                       size="sm"
-                                      color={member?.avatar_color}
+                                      color={member?.avatarColor}
                                     />
-                                    <span>
-                                      {member?.full_name ?? "Unknown"}
-                                    </span>
+                                    <span>{member?.fullName ?? "Unknown"}</span>
                                   </div>
                                   <span className="font-display font-semibold">
-                                    {formatAmount(split.amount_owed)} Toman
+                                    {formatAmount(split.amountOwed)} Toman
                                   </span>
                                 </div>
                               );
@@ -576,60 +680,79 @@ export default function GroupDetailPage() {
             debts.map((d, i) => {
               const key = `${d.fromUser}-${d.toUser}`;
               const isSettled = settledKeys.has(key);
+              const hasPending = d.fromIsPending || d.toIsPending;
               const canSettle =
-                !isSettled && (d.fromUser === userId || d.toUser === userId);
+                !isSettled &&
+                !hasPending &&
+                (d.fromUser === userId || d.toUser === userId);
+
+              const fromName = d.fromIsPending
+                ? (d.fromEmail ?? "Pending")
+                : (d.fromUserProfile?.full_name ?? "?");
+              const toName = d.toIsPending
+                ? (d.toEmail ?? "Pending")
+                : (d.toUserProfile?.full_name ?? "?");
+
               return (
-                <Card
-                  key={i}
-                  className={`flex items-center gap-3 transition-all duration-500 ${
-                    isSettled ? "opacity-40" : ""
-                  }`}
-                >
-                  <Avatar
-                    userId={d.fromUser}
-                    name={d.fromUserProfile?.full_name ?? "?"}
-                    size="sm"
-                    color={d.fromUserProfile?.avatar_color}
-                  />
-                  <div className="flex-1 min-w-0 text-sm">
-                    <span className="font-semibold">
-                      {d.fromUser === userId
-                        ? "You"
-                        : (d.fromUserProfile?.full_name ?? "?")}
-                    </span>
-                    <span className="text-ink-muted">
-                      {d.fromUser === userId ? " owe " : " owes "}
-                    </span>
-                    <span className="font-semibold">
-                      {d.toUser === userId
-                        ? "you"
-                        : (d.toUserProfile?.full_name ?? "?")}
-                    </span>
-                  </div>
-                  {isSettled ? (
-                    <div className="flex items-center gap-1 text-positive text-sm font-semibold">
-                      <CheckCircle size={16} />
-                      Settled!
-                    </div>
-                  ) : (
-                    <>
-                      <AmountDisplay
-                        amount={d.amountToman}
-                        showCurrency={false}
-                        className="text-sm transition-colors duration-700"
+                <div key={i} className="flex flex-col gap-1">
+                  <Card
+                    className={`flex items-center gap-3 transition-all duration-500 ${
+                      isSettled ? "opacity-40" : ""
+                    }`}
+                  >
+                    {d.fromIsPending ? (
+                      <GhostAvatar size="sm" />
+                    ) : (
+                      <Avatar
+                        userId={d.fromUser}
+                        name={fromName}
+                        size="sm"
+                        color={d.fromUserProfile?.avatar_color}
                       />
-                      {canSettle && (
-                        <button
-                          onClick={() => setSettleDebt(d)}
-                          className="flex items-center gap-1 rounded-lg border-2 border-ink bg-positive/10 px-2 py-1 text-xs font-semibold text-positive hover:bg-positive/20 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all duration-150"
-                        >
-                          <CheckCircle size={14} />
-                          Settle
-                        </button>
-                      )}
-                    </>
+                    )}
+                    <div className="flex-1 min-w-0 text-sm">
+                      <span className="font-semibold">
+                        {d.fromUser === userId ? "You" : fromName}
+                      </span>
+                      <span className="text-ink-muted">
+                        {d.fromUser === userId ? " owe " : " owes "}
+                      </span>
+                      <span className="font-semibold">
+                        {d.toUser === userId ? "you" : toName}
+                      </span>
+                    </div>
+                    {isSettled ? (
+                      <div className="flex items-center gap-1 text-positive text-sm font-semibold">
+                        <CheckCircle size={16} />
+                        Settled!
+                      </div>
+                    ) : (
+                      <>
+                        <AmountDisplay
+                          amount={d.amountToman}
+                          showCurrency={false}
+                          className="text-sm transition-colors duration-700"
+                        />
+                        {canSettle && (
+                          <button
+                            onClick={() => setSettleDebt(d)}
+                            className="flex items-center gap-1 rounded-lg border-2 border-ink bg-positive/10 px-2 py-1 text-xs font-semibold text-positive hover:bg-positive/20 active:translate-x-1 active:translate-y-1 active:shadow-none transition-all duration-150"
+                          >
+                            <CheckCircle size={14} />
+                            Settle
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </Card>
+                  {hasPending && (
+                    <p className="text-xs text-ink-muted px-1 pt-1">
+                      {d.fromIsPending ? d.fromEmail : d.toEmail}{" "}
+                      &nbsp;hasn&apos;t signed up yet. Their balance will update
+                      when they join.
+                    </p>
                   )}
-                </Card>
+                </div>
               );
             })
           )
@@ -649,28 +772,49 @@ export default function GroupDetailPage() {
             <div className="space-y-2">
               {(group?.members ?? []).map((m) => (
                 <Card key={m.id} className="flex items-center gap-3">
-                  <Avatar
-                    userId={m.id}
-                    name={m.full_name}
-                    color={m.avatar_color}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate">
-                      {m.full_name}
-                      {m.id === userId && (
-                        <span className="text-ink-muted font-normal">
-                          {" "}
-                          (you)
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-ink-muted truncate">{m.email}</p>
-                  </div>
-                  {m.id === group?.created_by && (
-                    <span className="text-xs font-semibold text-primary-hover bg-primary/20 px-2 py-0.5 rounded border border-ink/20">
-                      Creator
-                    </span>
+                  {m.isPending ? (
+                    <GhostAvatar />
+                  ) : (
+                    <Avatar
+                      userId={m.id}
+                      name={m.fullName ?? m.email}
+                      color={m.avatarColor}
+                    />
                   )}
+                  <div className="flex-1 min-w-0">
+                    {m.isPending ? (
+                      <p className="text-sm font-semibold truncate text-ink-muted">
+                        {m.email}
+                      </p>
+                    ) : (
+                      <p className="text-sm font-semibold truncate">
+                        {m.fullName}
+                        {m.id === userId && (
+                          <span className="text-ink-muted font-normal">
+                            {" "}
+                            (you)
+                          </span>
+                        )}
+                      </p>
+                    )}
+                    {!m.isPending && (
+                      <p className="text-xs text-ink-muted truncate">
+                        {m.email}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {m.isPending && (
+                      <span className="text-xs font-semibold text-ink/50 bg-ink/8 px-2 py-0.5 rounded border border-ink/20">
+                        Pending
+                      </span>
+                    )}
+                    {!m.isPending && m.id === group?.createdBy && (
+                      <span className="text-xs font-semibold text-primary-hover bg-primary/20 px-2 py-0.5 rounded border border-ink/20">
+                        Creator
+                      </span>
+                    )}
+                  </div>
                 </Card>
               ))}
             </div>
@@ -834,11 +978,15 @@ export default function GroupDetailPage() {
               <p className="text-sm text-ink-muted">
                 {settleDebt.fromUser === userId
                   ? "You"
-                  : (settleDebt.fromUserProfile?.full_name ?? "?")}{" "}
+                  : settleDebt.fromIsPending
+                    ? (settleDebt.fromEmail ?? "?")
+                    : (settleDebt.fromUserProfile?.full_name ?? "?")}{" "}
                 {settleDebt.fromUser === userId ? "pay" : "pays"}{" "}
                 {settleDebt.toUser === userId
                   ? "you"
-                  : (settleDebt.toUserProfile?.full_name ?? "?")}
+                  : settleDebt.toIsPending
+                    ? (settleDebt.toEmail ?? "?")
+                    : (settleDebt.toUserProfile?.full_name ?? "?")}
               </p>
               <AmountDisplay
                 amount={settleDebt.amountToman}
@@ -877,36 +1025,91 @@ export default function GroupDetailPage() {
         open={addMemberOpen}
         onClose={() => {
           setAddMemberOpen(false);
-          setSelectedMembers([]);
+          setEmailInput("");
+          setPendingInviteResult(null);
+          setCopyDone(false);
         }}
         title="Add Member"
       >
         <div className="flex flex-col gap-4">
-          <UserSearchInput
-            selected={selectedMembers}
-            onChange={(users) =>
-              setSelectedMembers(
-                users.filter((u) => !existingMemberIds.has(u.id)),
-              )
-            }
-            disabledIds={existingMemberIds}
+          <Input
+            label="Email address"
+            type="email"
+            placeholder="friend@example.com"
+            value={emailInput}
+            onChange={(e) => {
+              setEmailInput(e.target.value);
+              setPendingInviteResult(null);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !addingMember && emailInput.trim()) {
+                handleAddMember();
+              }
+            }}
           />
-          <Button
-            variant="primary"
-            fullWidth
-            onClick={handleAddMember}
-            disabled={addingMember || selectedMembers.length === 0}
-            className="flex items-center justify-center gap-2"
-          >
-            {addingMember ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Adding...
-              </>
-            ) : (
-              "Add Member"
-            )}
-          </Button>
+
+          {/* Pending invite result card */}
+          {pendingInviteResult && (
+            <div className="rounded-lg border-2 border-ink bg-surface-alt shadow-[4px_4px_0px_#0D0D0D] p-4 flex flex-col gap-3">
+              <div className="flex items-start gap-2 text-sm">
+                <Clock size={16} className="text-ink-muted mt-0.5 shrink-0" />
+                <span className="text-ink-muted leading-snug">
+                  <span className="font-semibold text-ink">
+                    {pendingInviteResult.email}
+                  </span>{" "}
+                  hasn&apos;t signed up yet — added as pending
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={handleCopyInvite}
+                  className="flex items-center gap-1.5"
+                >
+                  {copyDone ? (
+                    <>
+                      <Check size={14} />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      Copy invite
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setPendingInviteResult(null);
+                    setEmailInput("");
+                    setCopyDone(false);
+                  }}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {!pendingInviteResult && (
+            <Button
+              variant="primary"
+              fullWidth
+              onClick={handleAddMember}
+              disabled={addingMember || !emailInput.trim()}
+              className="flex items-center justify-center gap-2"
+            >
+              {addingMember ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Member"
+              )}
+            </Button>
+          )}
         </div>
       </Drawer>
 

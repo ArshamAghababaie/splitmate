@@ -10,13 +10,20 @@ export function calculateBalances(expenses: ExpenseWithSplits[]): Balance[] {
   const nets = new Map<string, number>();
 
   for (const expense of expenses) {
-    nets.set(expense.paidBy, (nets.get(expense.paidBy) ?? 0) + expense.amountToman);
+    const payerMemberId = expense.paidBy ?? expense.pendingPaidBy;
+    if (!payerMemberId) continue; // safety guard — should never happen due to CHECK constraint
+    nets.set(payerMemberId, (nets.get(payerMemberId) ?? 0) + expense.amountToman);
     for (const split of expense.splits) {
-      nets.set(split.userId, (nets.get(split.userId) ?? 0) - split.amountOwed);
+      const memberId = (split.userId ?? split.pendingMemberId)!;
+      nets.set(memberId, (nets.get(memberId) ?? 0) - split.amountOwed);
     }
   }
 
-  return Array.from(nets.entries()).map(([userId, net]) => ({ userId, net }));
+  return Array.from(nets.entries()).map(([memberId, net]) => ({
+    memberId,
+    net,
+    isPending: false,
+  }));
 }
 
 export function simplifyDebts(balances: Balance[]): Debt[] {
@@ -41,8 +48,12 @@ export function simplifyDebts(balances: Balance[]): Debt[] {
     const payment = Math.min(creditor.net, Math.abs(debtor.net));
 
     debts.push({
-      fromUser: debtor.userId,
-      toUser: creditor.userId,
+      fromMemberId: debtor.memberId,
+      fromIsPending: debtor.isPending,
+      fromEmail: debtor.email,
+      toMemberId: creditor.memberId,
+      toIsPending: creditor.isPending,
+      toEmail: creditor.email,
       amountToman: payment,
     });
 
@@ -63,8 +74,9 @@ export function calculateGroupDebts(
   const settlementExpenses: ExpenseWithSplits[] = settlements.map((s, i) => ({
     id: `settlement-${i}`,
     paidBy: s.fromUser,
+    pendingPaidBy: null,
     amountToman: s.amountToman,
-    splits: [{ userId: s.toUser, amountOwed: s.amountToman }],
+    splits: [{ userId: s.toUser, pendingMemberId: null, amountOwed: s.amountToman }],
   }));
 
   const allExpenses = [...expenses, ...settlementExpenses];
@@ -79,6 +91,7 @@ export function splitEqually(totalAmount: number, userIds: string[]): Split[] {
 
   return userIds.map((userId, i) => ({
     userId,
+    pendingMemberId: null,
     amountOwed: base + (i < remainder ? 1 : 0),
   }));
 }
@@ -89,6 +102,7 @@ export function splitByPercentage(
 ): Split[] {
   const splits: Split[] = percentages.map(({ userId, percentage }) => ({
     userId,
+    pendingMemberId: null,
     amountOwed: Math.floor((totalAmount * percentage) / 100),
   }));
 

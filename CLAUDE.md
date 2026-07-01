@@ -25,7 +25,7 @@ A mobile-first expense-splitting and simple debt-tracking web app for a small pr
 
 ## Database Schema
 
-7 tables: `profiles`, `groups`, `group_members`, `categories`, `expenses`, `expense_splits`, `settlements`. Full schema in `supabase/schema.sql`.
+10 tables: `profiles`, `groups`, `group_members`, `categories`, `expenses`, `expense_splits`, `settlements`, `pending_members`, `group_pending_members`, `invitations`. Full schema in `supabase/schema.sql`; pending-member tables in `supabase/migrations/001_pending_members.sql`.
 
 - All monetary amounts are integers (Iranian Toman, no decimals)
 - `expenses.group_id` is nullable — null means a quick loan between two people
@@ -53,6 +53,7 @@ A mobile-first expense-splitting and simple debt-tracking web app for a small pr
 - `GET  /api/expenses/[id]` — single expense with splits, category, payer
 - `POST /api/settlements` — record a settlement (body: `{ groupId, fromUser, toUser, amountToman }`)
 - `GET  /api/categories` — list all categories
+- `GET  /api/invitations/[token]` — public (no auth); returns `{ groupName, invitedByName, email }` or 404/410
 
 ## Business Logic
 
@@ -98,6 +99,38 @@ Neubrutalist visual language: hard ink borders (`2px solid #0D0D0D`), offset box
 - `touch-action: manipulation` on buttons/links to eliminate 300ms tap delay
 - Form inputs use `font-size: 16px` minimum to prevent iOS auto-zoom
 - Icon generation script: `node scripts/generate-icons.mjs` (uses `sharp`)
+
+## Pending Members
+
+Migration file: `supabase/migrations/001_pending_members.sql` (run once in Supabase SQL Editor).
+
+### New tables
+
+- **`pending_members`** — one row per uninvited email (`id`, `email` UNIQUE, `invited_by`, `created_at`). Deleted automatically on promotion.
+- **`group_pending_members`** — join table linking a group to its pending members (`group_id`, `pending_member_id`, `invited_by`, `invited_at`). Deleted on promotion.
+- **`invitations`** — one invitation token per (email, group) pair (`id`, `token` UNIQUE, `email`, `group_id`, `pending_member_id`, `invited_by`, `expires_at` 7 days, `accepted_at`).
+
+### `expense_splits` changes
+
+The old composite PK `(expense_id, user_id)` was replaced by a surrogate UUID PK (`id`). `user_id` is now nullable. A new `pending_member_id UUID` column (FK → `pending_members`) was added. A CHECK constraint enforces `num_nonnulls(user_id, pending_member_id) = 1` — exactly one must be set.
+
+### Auto-promotion flow
+
+A trigger on `auth.users` INSERT (`handle_new_user`) auto-creates the `profiles` row **and** checks for a matching `pending_members.email`. If found it:
+1. Inserts real `group_members` rows for every group the pending member belonged to
+2. Updates `expense_splits` to point to the new profile (`user_id = NEW.id, pending_member_id = NULL`)
+3. Marks related `invitations` as accepted
+4. Deletes the `group_pending_members` and `pending_members` rows
+
+### Invite flow
+
+`POST /api/groups/[id]/members` returns one of:
+- `{ status: 'added', member }` (201) — email already registered; added directly
+- `{ status: 'pending', pendingMember, inviteToken, inviteUrl, inviteText }` (200) — email unknown; pending member created and invite text generated
+
+Invite URL pattern: `/invite/[token]` — public page, no auth required. **No email is sent**; the inviter copies and shares the text manually.
+
+The `/invite/[token]` page renders a server component that fetches invitation details directly via the Supabase server client. It shows a "Continue with Google" button that starts the standard OAuth flow.
 
 ## Environment Variables
 

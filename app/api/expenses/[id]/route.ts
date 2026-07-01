@@ -149,8 +149,20 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       updates.category_id = body.categoryId as string;
     if (body.expenseDate !== undefined)
       updates.expense_date = body.expenseDate as string;
-    if (body.paidBy !== undefined)
-      updates.paid_by = body.paidBy as string;
+
+    // Update payer — always set both columns together to satisfy the CHECK constraint
+    if (body.paidBy !== undefined || body.pendingPaidBy !== undefined) {
+      const hasPaidBy = typeof body.paidBy === "string" && (body.paidBy as string).length > 0;
+      const hasPendingPaidBy = typeof body.pendingPaidBy === "string" && (body.pendingPaidBy as string).length > 0;
+      if (hasPaidBy === hasPendingPaidBy) {
+        return NextResponse.json(
+          { error: "Exactly one of paidBy or pendingPaidBy must be provided" },
+          { status: 400 },
+        );
+      }
+      updates.paid_by = hasPaidBy ? (body.paidBy as string) : null;
+      updates.pending_paid_by = hasPendingPaidBy ? (body.pendingPaidBy as string) : null;
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: updateError } = await supabase
@@ -198,10 +210,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       const { error: insertError } = await supabase
         .from("expense_splits")
         .insert(
-          (body.splits as { userId: string; amountOwed: number }[]).map(
+          (body.splits as { userId: string | null; pendingMemberId?: string | null; amountOwed: number }[]).map(
             (s) => ({
               expense_id: id,
-              user_id: s.userId,
+              user_id: s.userId ?? null,
+              pending_member_id: s.pendingMemberId ?? null,
               amount_owed: s.amountOwed,
             }),
           ),

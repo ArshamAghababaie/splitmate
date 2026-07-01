@@ -36,7 +36,11 @@ type RecentExpense = {
   amount_toman: number;
   expense_date: string;
   categories: { name: string; icon: string } | null;
-  profiles: { id: string; full_name: string; avatar_color: string | null } | null;
+  profiles: {
+    id: string;
+    full_name: string;
+    avatar_color: string | null;
+  } | null;
   groups: { name: string } | null;
 };
 
@@ -57,7 +61,6 @@ export function DashboardContent({
 
   const loadData = useCallback(async () => {
     try {
-
       const [groupsData, recentData] = await Promise.all([
         fetchJSON<Group[]>("/api/groups"),
         fetchJSON<RecentExpense[]>("/api/expenses?limit=5"),
@@ -74,7 +77,11 @@ export function DashboardContent({
       if (Array.isArray(groupsData) && groupsData.length > 0) {
         const balResults = await Promise.all(
           groupsData.map(async (g: Group) => {
-            return (await fetchJSON<{ debts: DebtItem[] }>(`/api/groups/${g.id}/balances`)) ?? { debts: [] as DebtItem[] };
+            return (
+              (await fetchJSON<{ debts: DebtItem[] }>(
+                `/api/groups/${g.id}/balances`,
+              )) ?? { debts: [] as DebtItem[] }
+            );
           }),
         );
 
@@ -175,7 +182,7 @@ export function DashboardContent({
             onAction={() => (window.location.href = "/groups")}
           />
         ) : (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-2">
             {groups.slice(0, 3).map((g) => (
               <Link key={g.id} href={`/groups/${g.id}`}>
                 <Card className="flex items-center gap-3 hover:shadow-[2px_2px_0px_#0D0D0D] hover:translate-x-0.5 hover:translate-y-0.5 transition-all duration-150">
@@ -185,7 +192,8 @@ export function DashboardContent({
                       {g.name}
                     </p>
                     <p className="text-xs text-ink-muted">
-                      {g.memberCount} {g.memberCount === 1 ? "member" : "members"}
+                      {g.memberCount}{" "}
+                      {g.memberCount === 1 ? "member" : "members"}
                     </p>
                   </div>
                   <ArrowRight size={16} className="text-ink-muted" />
@@ -213,9 +221,13 @@ export function DashboardContent({
                         {exp.description || exp.categories?.name || "Expense"}
                       </p>
                       <div className="flex items-center gap-2 text-xs text-ink-muted">
-                        <span className="truncate">{exp.groups?.name ?? "Personal"}</span>
+                        <span className="truncate">
+                          {exp.groups?.name ?? "Personal"}
+                        </span>
                         <span>&middot;</span>
-                        <span className="shrink-0">{relativeDate(exp.expense_date)}</span>
+                        <span className="shrink-0">
+                          {relativeDate(exp.expense_date)}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
