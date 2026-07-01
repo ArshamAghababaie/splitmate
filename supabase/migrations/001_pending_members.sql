@@ -258,3 +258,6 @@ BEGIN
   RETURN v_expense_id;
 END;
 $$;
+
+-- Added separately: allow unauthenticated users to read invitations (for public invite links)
+-- CREATE POLICY "invitations_public_read" ON invitations FOR SELECT TO anon USING (true);

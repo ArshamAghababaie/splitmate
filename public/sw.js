@@ -1,20 +1,29 @@
-const CACHE_NAME = "splitmate-v1";
+const CACHE_NAME = "splitmate-v__BUILD_ID__";
 const OFFLINE_URL = "/offline";
 
-const PRECACHE_URLS = [OFFLINE_URL, "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE_URLS = [
+  OFFLINE_URL,
+  "/manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(PRECACHE_URLS)),
   );
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)),
+        ),
+      ),
   );
   self.clients.claim();
 });
@@ -22,7 +31,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   if (event.request.mode !== "navigate") {
     // For non-navigation requests: try network, fall back to cache
-    if (event.request.url.match(/^https:\/\/fonts\.(googleapis|gstatic)\.com/)) {
+    if (
+      event.request.url.match(/^https:\/\/fonts\.(googleapis|gstatic)\.com/)
+    ) {
       event.respondWith(
         caches.open("google-fonts").then((cache) =>
           cache.match(event.request).then(
@@ -31,9 +42,9 @@ self.addEventListener("fetch", (event) => {
               fetch(event.request).then((response) => {
                 cache.put(event.request, response.clone());
                 return response;
-              })
-          )
-        )
+              }),
+          ),
+        ),
       );
       return;
     }
@@ -43,7 +54,15 @@ self.addEventListener("fetch", (event) => {
   // Navigation requests: network first, offline fallback
   event.respondWith(
     fetch(event.request).catch(() =>
-      caches.match(OFFLINE_URL).then((cached) => cached || new Response("Offline", { status: 503 }))
-    )
+      caches
+        .match(OFFLINE_URL)
+        .then((cached) => cached || new Response("Offline", { status: 503 })),
+    ),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });

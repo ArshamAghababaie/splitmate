@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { ToastProvider } from "@/components/ui/Toast";
 
 import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -35,6 +36,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col font-body">
         <ServiceWorkerRegistrar />
         <ToastProvider>{children}</ToastProvider>
+        <UpdateBanner />
       </body>
     </html>
   );
